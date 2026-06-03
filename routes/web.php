@@ -1,4 +1,6 @@
 <?php
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\WebsiteController;
 use App\Http\Controllers\PublicStorefrontController;
 use App\Http\Controllers\PublicServiceOrderController;
 use App\Http\Controllers\PublicTrackingController;
@@ -16,26 +18,12 @@ use App\Http\Controllers\Admin\PlanController;
 use App\Http\Controllers\Admin\TenantManagementController;
 use App\Http\Controllers\Admin\SubscriptionController;
 
-Route::group(['prefix' => '{slug}'], function () {
-    
-    // RF-01, RF-02, RF-12: Renderização da página pública, banners, mapas e catálogo[cite: 3, 4, 13, 14, 18].
-    Route::get('/', [PublicStorefrontController::class, 'index'])->name('public.store.index');
+Route::get('/', [WebsiteController::class, 'index'])->name('public.store.index');
+use App\Http\Controllers\AuthController;
 
-    // RF-03: Portal de abertura de chamados pelo cliente[cite: 6].
-    Route::get('/chamados/novo', [PublicServiceOrderController::class, 'create'])->name('public.os.create');
-    // Envio dos dados do aparelho, sintomas e fotos[cite: 7].
-    Route::post('/chamados', [PublicServiceOrderController::class, 'store'])->name('public.os.store');
-
-    // RF-04: Área de acompanhamento por CPF ou número do chamado[cite: 8].
-    Route::get('/acompanhamento', [PublicTrackingController::class, 'index'])->name('public.tracking.index');
-    // Visualização da coluna do Kanban em tempo real[cite: 9].
-    Route::post('/acompanhamento/buscar', [PublicTrackingController::class, 'show'])->name('public.tracking.show');
-    // Aprovação ou recusa de orçamentos enviados[cite: 9].
-    Route::patch('/acompanhamento/{os_id}/orcamento', [PublicTrackingController::class, 'updateBudgetStatus'])->name('public.tracking.budget');
-
-    // RF-05: Checkout e Split de Pagamento automatizado[cite: 10, 11].
-    Route::post('/checkout', [PublicCheckoutController::class, 'process'])->name('public.checkout.process');
-});
+Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::group(['prefix' => 'painel', 'middleware' => ['auth', 'tenant_context']], function () {
 
@@ -73,15 +61,36 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'is_superadmin']], f
 
     // RF-11.1: CRUD de Planos (Bronze, Prata, Ouro) e definição de valores e limites[cite: 36].
     Route::resource('/planos', PlanController::class);
-    
+
     // RF-11.3: Listagem de todas as assistências cadastradas e status de assinatura[cite: 43].
     Route::get('/assistencias', [TenantManagementController::class, 'index'])->name('admin.tenants.index');
     Route::get('/assistencias/{id}', [TenantManagementController::class, 'show'])->name('admin.tenants.show');
-    
+
     // Modulo de suspensão de acesso por atraso no gateway[cite: 44].
     Route::post('/assistencias/{id}/suspender', [SubscriptionController::class, 'suspend'])->name('admin.subscriptions.suspend');
     Route::post('/assistencias/{id}/reativar', [SubscriptionController::class, 'reactivate'])->name('admin.subscriptions.reactivate');
-    
+
     // RF-11.4: Configuração de dias de Trial (Período de testes)[cite: 45].
     Route::patch('/assistencias/{id}/trial', [SubscriptionController::class, 'updateTrialDays'])->name('admin.subscriptions.trial');
+});
+
+Route::group(['prefix' => '{slug}'], function () {
+
+    // RF-01, RF-02, RF-12: Renderização da página pública, banners, mapas e catálogo[cite: 3, 4, 13, 14, 18].
+    Route::get('/', [PublicStorefrontController::class, 'index'])->name('public.store.index');
+
+    // RF-03: Portal de abertura de chamados pelo cliente[cite: 6].
+    Route::get('/chamados/novo', [PublicServiceOrderController::class, 'create'])->name('public.os.create');
+    // Envio dos dados do aparelho, sintomas e fotos[cite: 7].
+    Route::post('/chamados', [PublicServiceOrderController::class, 'store'])->name('public.os.store');
+
+    // RF-04: Área de acompanhamento por CPF ou número do chamado[cite: 8].
+    Route::get('/acompanhamento', [PublicTrackingController::class, 'index'])->name('public.tracking.index');
+    // Visualização da coluna do Kanban em tempo real[cite: 9].
+    Route::post('/acompanhamento/buscar', [PublicTrackingController::class, 'show'])->name('public.tracking.show');
+    // Aprovação ou recusa de orçamentos enviados[cite: 9].
+    Route::patch('/acompanhamento/{os_id}/orcamento', [PublicTrackingController::class, 'updateBudgetStatus'])->name('public.tracking.budget');
+
+    // RF-05: Checkout e Split de Pagamento automatizado[cite: 10, 11].
+    Route::post('/checkout', [PublicCheckoutController::class, 'process'])->name('public.checkout.process');
 });

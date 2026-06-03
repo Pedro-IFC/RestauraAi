@@ -8,6 +8,6 @@ class PublicStorefrontController extends Controller
 {
     public function index(Request $request, $slug)
     {
-        return view('public.storefront', compact('slug'));
+        return view('public.storefront', ["slug" => $slug]);
     }
 }

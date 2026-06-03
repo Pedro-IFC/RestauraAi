@@ -9,6 +9,9 @@ class TenantCustomization extends Model
 {
     protected $fillable = [
         'tenant_id',
+        'logo',              // Caminho/URL da logomarca
+        'primary_color',     // Cor principal (ex: #FF0000)
+        'secondary_color',   // Cor secundária
         'banners',
         'about_text',
         'instagram_handle',
