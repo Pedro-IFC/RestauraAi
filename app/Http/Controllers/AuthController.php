@@ -32,6 +32,10 @@ class AuthController extends Controller
             // Proteção contra Session Fixation
             $request->session()->regenerate();
 
+            if (Auth::user()->role === 'superadmin') {
+                return redirect()->intended(route('planos.index'));
+            }
+
             // Redireciona para o painel (ou para a página que ele tentou acessar antes)
             return redirect()->intended(route('tenant.dashboard'));
         }
