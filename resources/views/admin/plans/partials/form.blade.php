@@ -1,4 +1,11 @@
-@php($features = old('features', $plan->features ?? []))
+@php
+    $features = array_replace(\App\Models\Plan::defaultFeatures(), old('features', $plan->features ?? []));
+    $planPresets = [
+        'bronze' => \App\Models\Plan::presetFeatures('bronze'),
+        'prata' => \App\Models\Plan::presetFeatures('prata'),
+        'ouro' => \App\Models\Plan::presetFeatures('ouro'),
+    ];
+@endphp
 
 <div class="grid gap-5 md:grid-cols-2">
     <div class="md:col-span-2">
@@ -51,16 +58,22 @@
 
 <div class="mt-8">
     <h2 class="text-lg font-semibold text-gray-950">Recursos liberados</h2>
+    <div class="mt-3 grid gap-3 md:grid-cols-3">
+        @foreach ([
+            'bronze' => 'Bronze',
+            'prata' => 'Prata',
+            'ouro' => 'Ouro',
+        ] as $preset => $label)
+            <button type="button"
+                class="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                data-plan-preset="{{ $preset }}">
+                Aplicar {{ $label }}
+            </button>
+        @endforeach
+    </div>
 
     <div class="mt-4 grid gap-3 md:grid-cols-2">
-        @foreach ([
-            'kanban' => 'Kanban operacional',
-            'catalog' => 'Catálogo público',
-            'dashboard' => 'Dashboard gerencial',
-            'customization' => 'Customização do microssite',
-            'custom_domain' => 'Domínio personalizado',
-            'priority_support' => 'Suporte prioritário',
-        ] as $key => $label)
+        @foreach (\App\Models\Plan::featureLabels() as $key => $label)
             <label class="flex items-center gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700">
                 <input type="hidden" name="features[{{ $key }}]" value="0">
                 <input type="checkbox" name="features[{{ $key }}]" value="1" @checked((bool) ($features[$key] ?? false)) class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
@@ -78,3 +91,30 @@
         Salvar plano
     </button>
 </div>
+
+@push('scripts')
+    <script>
+        (() => {
+            const presets = @json($planPresets);
+
+            document.querySelectorAll('[data-plan-preset]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const features = presets[button.dataset.planPreset] || {};
+
+                    Object.entries(features).forEach(([key, value]) => {
+                        const checkbox = document.querySelector(`input[type="checkbox"][name="features[${key}]"]`);
+                        const input = document.querySelector(`input:not([type="hidden"])[name="features[${key}]"]`);
+
+                        if (checkbox) {
+                            checkbox.checked = Boolean(value);
+                        }
+
+                        if (input && !checkbox) {
+                            input.value = value === null ? '' : value;
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+@endpush

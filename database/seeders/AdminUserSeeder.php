@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Models\Plan;
+use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
-use App\Models\Tenant;
-use App\Models\Plan;
 
 class AdminUserSeeder extends Seeder
 {
@@ -21,12 +21,7 @@ class AdminUserSeeder extends Seeder
             [
                 'price_monthly' => 97.00,
                 'price_yearly' => 970.00,
-                'features' => [
-                    'kanban' => true,
-                    'catalog' => true,
-                    'dashboard' => true,
-                    'customization' => true
-                ],
+                'features' => Plan::presetFeatures('ouro'),
                 'trial_days_allowed' => 14,
             ]
         );

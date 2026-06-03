@@ -13,16 +13,20 @@ class TenantContextMiddleware
     {
         // Verifica se o usuário está logado e se possui um tenant_id vinculado
         if (Auth::check() && Auth::user()->tenant_id) {
+            $tenant = Auth::user()->tenant;
 
-            // Dica para o futuro: Aqui você poderá adicionar a lógica do RF-11.3
-            // para verificar se o status da assinatura do Tenant está 'suspended'
-            // e redirecionar para uma tela de cobrança, se necessário.
+            $tenant->enforceSubscriptionLifecycle();
+
+            if ($tenant->isBillingBlocked() && ! $request->routeIs('tenant.billing.*') && ! $request->routeIs('logout')) {
+                return redirect()->route('tenant.billing.index');
+            }
 
             return $next($request);
         }
 
         // Se não tiver tenant_id, desloga e manda pro login
         Auth::logout();
+
         return redirect()->route('login')->with('error', 'Acesso negado. Sua conta não está vinculada a nenhuma assistência.');
     }
 }

@@ -22,7 +22,7 @@ class PlanController extends Controller
     {
         $plan = new Plan([
             'trial_days_allowed' => 0,
-            'features' => $this->defaultFeatures(),
+            'features' => Plan::defaultFeatures(),
         ]);
 
         return view('admin.plans.create', compact('plan'));
@@ -45,7 +45,7 @@ class PlanController extends Controller
     public function edit(Plan $plano)
     {
         $plan = $plano;
-        $plan->features = array_replace_recursive($this->defaultFeatures(), $plan->features ?? []);
+        $plan->features = $plan->normalizedFeatures();
 
         return view('admin.plans.edit', compact('plan'));
     }
@@ -89,18 +89,23 @@ class PlanController extends Controller
             'features.max_items' => ['nullable', 'integer', 'min:0'],
             'features.max_public_products' => ['nullable', 'integer', 'min:0'],
             'features.kanban' => ['nullable', 'boolean'],
+            'features.inventory' => ['nullable', 'boolean'],
             'features.catalog' => ['nullable', 'boolean'],
+            'features.schedule' => ['nullable', 'boolean'],
             'features.dashboard' => ['nullable', 'boolean'],
-            'features.customization' => ['nullable', 'boolean'],
+            'features.time_tracking' => ['nullable', 'boolean'],
+            'features.customization_basic' => ['nullable', 'boolean'],
+            'features.customization_advanced' => ['nullable', 'boolean'],
             'features.custom_domain' => ['nullable', 'boolean'],
             'features.priority_support' => ['nullable', 'boolean'],
         ]);
 
-        $features = array_replace($this->defaultFeatures(), $validated['features'] ?? []);
+        $features = array_replace(Plan::defaultFeatures(), $validated['features'] ?? []);
 
         foreach ($features as $key => $value) {
             if (str_starts_with($key, 'max_')) {
                 $features[$key] = $value === null || $value === '' ? null : (int) $value;
+
                 continue;
             }
 
@@ -113,22 +118,6 @@ class PlanController extends Controller
             'price_yearly' => $validated['price_yearly'] ?? null,
             'trial_days_allowed' => $validated['trial_days_allowed'],
             'features' => $features,
-        ];
-    }
-
-    private function defaultFeatures(): array
-    {
-        return [
-            'max_service_orders_per_month' => null,
-            'max_users' => null,
-            'max_items' => null,
-            'max_public_products' => null,
-            'kanban' => false,
-            'catalog' => false,
-            'dashboard' => false,
-            'customization' => false,
-            'custom_domain' => false,
-            'priority_support' => false,
         ];
     }
 }

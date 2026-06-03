@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
-use App\Models\ServiceOrder;
 use App\Models\Customer;
 use App\Models\Item;
-use Illuminate\Support\Facades\DB;
+use App\Models\KanbanColumn;
+use App\Models\ServiceOrder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ServiceOrderController extends Controller
 {
@@ -19,6 +22,7 @@ class ServiceOrderController extends Controller
     {
         // Exemplo de listagem com paginação e carregamento dos relacionamentos necessários
         $serviceOrders = ServiceOrder::with(['customer', 'kanbanColumn'])
+            ->where('tenant_id', Auth::user()->tenant_id)
             ->latest()
             ->paginate(15);
 
@@ -31,9 +35,10 @@ class ServiceOrderController extends Controller
      */
     public function create()
     {
-        $customers = Customer::orderBy('name')->get();
-        
-        return view('tenant.service_orders.create', compact('customers'));
+        $customers = Customer::where('tenant_id', Auth::user()->tenant_id)->orderBy('name')->get();
+        $kanbanColumns = KanbanColumn::where('tenant_id', Auth::user()->tenant_id)->orderBy('order_index')->get();
+
+        return view('tenant.service_orders.create', compact('customers', 'kanbanColumns'));
     }
 
     /**
@@ -42,17 +47,33 @@ class ServiceOrderController extends Controller
      */
     public function store(Request $request)
     {
+        if (Auth::user()->tenant->hasReachedMonthlyServiceOrderLimit()) {
+            return back()
+                ->withInput()
+                ->withErrors(['plan' => 'Limite mensal de chamados atingido para o plano atual.']);
+        }
+
         $validated = $request->validate([
-            'customer_id'      => 'required|exists:customers,id',
-            'device_model'     => 'required|string|max:255',
-            'defect_symptoms'  => 'required|string',
-            'kanban_column_id' => 'required|exists:kanban_columns,id',
-            'deadline_at'      => 'nullable|date|after:today',
+            'customer_id' => [
+                'required',
+                Rule::exists('customers', 'id')->where('tenant_id', Auth::user()->tenant_id),
+            ],
+            'device_model' => 'required|string|max:255',
+            'defect_symptoms' => 'required|string',
+            'kanban_column_id' => [
+                'required',
+                Rule::exists('kanban_columns', 'id')->where('tenant_id', Auth::user()->tenant_id),
+            ],
+            'deadline_at' => 'nullable|date|after:today',
         ]);
 
         // O tenant_id pode ser definido automaticamente no observer ou aqui via auth()
         $serviceOrder = ServiceOrder::create(array_merge($validated, [
+            'tenant_id' => Auth::user()->tenant_id,
             'status' => 'pending',
+            'kanban_position' => (ServiceOrder::where('tenant_id', Auth::user()->tenant_id)
+                ->where('kanban_column_id', $validated['kanban_column_id'])
+                ->max('kanban_position') ?? 0) + 1,
             'total_cost' => 0.00,
             'total_price' => 0.00,
         ]));
@@ -69,9 +90,18 @@ class ServiceOrderController extends Controller
     public function show($id)
     {
         $serviceOrder = ServiceOrder::with(['customer', 'kanbanColumn', 'items', 'timeEntries.user'])
+            ->where('tenant_id', Auth::user()->tenant_id)
             ->findOrFail($id);
 
-        return view('tenant.service_orders.show', compact('serviceOrder'));
+        $availableItems = Auth::user()->tenant->hasFeature('inventory')
+            ? Item::forTenant(Auth::user()->tenant_id)
+                ->where('stock_quantity', '>', 0)
+                ->orderBy('type')
+                ->orderBy('name')
+                ->get()
+            : collect();
+
+        return view('tenant.service_orders.show', compact('serviceOrder', 'availableItems'));
     }
 
     /**
@@ -79,10 +109,11 @@ class ServiceOrderController extends Controller
      */
     public function edit($id)
     {
-        $serviceOrder = ServiceOrder::findOrFail($id);
-        $customers = Customer::orderBy('name')->get();
+        $serviceOrder = ServiceOrder::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
+        $customers = Customer::where('tenant_id', Auth::user()->tenant_id)->orderBy('name')->get();
+        $kanbanColumns = KanbanColumn::where('tenant_id', Auth::user()->tenant_id)->orderBy('order_index')->get();
 
-        return view('tenant.service_orders.edit', compact('serviceOrder', 'customers'));
+        return view('tenant.service_orders.edit', compact('serviceOrder', 'customers', 'kanbanColumns'));
     }
 
     /**
@@ -91,13 +122,14 @@ class ServiceOrderController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $serviceOrder = ServiceOrder::findOrFail($id);
+        $serviceOrder = ServiceOrder::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
 
         $validated = $request->validate([
-            'device_model'    => 'sometimes|required|string|max:255',
+            'device_model' => 'sometimes|required|string|max:255',
             'defect_symptoms' => 'sometimes|required|string',
-            'status'          => 'sometimes|required|in:pending,budgeting,approved,rejected,finished',
-            'deadline_at'     => 'nullable|date',
+            'status' => 'sometimes|required|in:pending,budgeting,approved,rejected,finished',
+            'total_price' => 'sometimes|numeric|min:0',
+            'deadline_at' => 'nullable|date',
         ]);
 
         $serviceOrder->update($validated);
@@ -113,7 +145,7 @@ class ServiceOrderController extends Controller
      */
     public function destroy($id)
     {
-        $serviceOrder = ServiceOrder::findOrFail($id);
+        $serviceOrder = ServiceOrder::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
         $serviceOrder->delete();
 
         return redirect()
@@ -127,38 +159,46 @@ class ServiceOrderController extends Controller
      */
     public function attachItems(Request $request, $id)
     {
-        $serviceOrder = ServiceOrder::findOrFail($id);
+        $serviceOrder = ServiceOrder::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
 
         $validated = $request->validate([
-            'item_id'  => 'required|exists:items,id',
+            'item_id' => 'required|integer',
             'quantity' => 'required|numeric|min:0.01',
         ]);
 
-        $item = Item::findOrFail($validated['item_id']);
+        try {
+            DB::transaction(function () use ($serviceOrder, $validated) {
+                $item = Item::forTenant(Auth::user()->tenant_id)
+                    ->lockForUpdate()
+                    ->findOrFail($validated['item_id']);
 
-        // 1. Verifica se há estoque suficiente para a operação
-        if ($item->stock_quantity < $validated['quantity']) {
-            return redirect()->back()->withErrors(['quantity' => 'Estoque insuficiente para este insumo.']);
+                // 1. Verifica se há estoque suficiente para a operação
+                if ((float) $item->stock_quantity < (float) $validated['quantity']) {
+                    throw new \RuntimeException('Estoque insuficiente para este insumo.');
+                }
+
+                // 2. Registra na tabela intermediária salvando o SNAPSHOT dos valores atuais
+                $serviceOrder->items()->attach($item->id, [
+                    'quantity' => $validated['quantity'],
+                    'unit_cost' => $item->cost_price,
+                    'unit_price' => $item->sale_price,
+                ]);
+
+                // 3. Deduz a quantidade do estoque do item
+                $item->decrement('stock_quantity', $validated['quantity']);
+
+                // 4. Recalcula os totais de custo e preço da Ordem de Serviço
+                $totalCost = $serviceOrder->items()->sum(DB::raw('service_order_items.quantity * service_order_items.unit_cost'));
+                $totalPrice = $serviceOrder->items()->sum(DB::raw('service_order_items.quantity * service_order_items.unit_price'));
+
+                $serviceOrder->update([
+                    'total_cost' => $totalCost,
+                    'total_price' => $totalPrice,
+                ]);
+            });
+        } catch (\RuntimeException $exception) {
+            return redirect()->back()->withErrors(['quantity' => $exception->getMessage()]);
         }
-
-        // 2. Registra na tabela intermediária salvando o SNAPSHOT dos valores atuais
-        $serviceOrder->items()->attach($item->id, [
-            'quantity'   => $validated['quantity'],
-            'unit_cost'  => $item->cost_price,
-            'unit_price' => $item->sale_price,
-        ]);
-
-        // 3. Deduz a quantidade do estoque do item
-        $item->decrement('stock_quantity', $validated['quantity']);
-
-        // 4. Recalcula os totais de custo e preço da Ordem de Serviço
-        $totalCost  = $serviceOrder->items()->sum(DB::raw('service_order_items.quantity * service_order_items.unit_cost'));
-        $totalPrice = $serviceOrder->items()->sum(DB::raw('service_order_items.quantity * service_order_items.unit_price'));
-
-        $serviceOrder->update([
-            'total_cost'  => $totalCost,
-            'total_price' => $totalPrice,
-        ]);
 
         return redirect()
             ->route('ordens-servico.show', $serviceOrder->id)

@@ -27,4 +27,34 @@ class TenantCustomization extends Model
     {
         return $this->belongsTo(Tenant::class);
     }
+
+    public function getInstagramUrlAttribute(): ?string
+    {
+        if (! $this->instagram_handle) {
+            return null;
+        }
+
+        if (str_starts_with($this->instagram_handle, 'http://') || str_starts_with($this->instagram_handle, 'https://')) {
+            return $this->instagram_handle;
+        }
+
+        return 'https://instagram.com/'.ltrim($this->instagram_handle, '@');
+    }
+
+    public function getGoogleMapsEmbedSrcAttribute(): ?string
+    {
+        if (! $this->google_maps_iframe) {
+            return null;
+        }
+
+        if (preg_match('/src=["\']([^"\']+)["\']/i', $this->google_maps_iframe, $matches)) {
+            return $matches[1];
+        }
+
+        if (filter_var($this->google_maps_iframe, FILTER_VALIDATE_URL)) {
+            return $this->google_maps_iframe;
+        }
+
+        return null;
+    }
 }

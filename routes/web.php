@@ -1,6 +1,8 @@
 <?php
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\WebsiteController;
+
 use App\Http\Controllers\PublicStorefrontController;
 use App\Http\Controllers\PublicServiceOrderController;
 use App\Http\Controllers\PublicTrackingController;
@@ -19,42 +21,46 @@ use App\Http\Controllers\Admin\TenantManagementController;
 use App\Http\Controllers\Admin\SubscriptionController;
 
 Route::get('/', [WebsiteController::class, 'index'])->name('public.store.index');
-use App\Http\Controllers\AuthController;
-
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::group(['prefix' => 'painel', 'middleware' => ['auth', 'tenant_context']], function () {
+    Route::get('/cobranca', [DashboardController::class, 'billing'])->name('tenant.billing.index');
 
     // RF-10: Dashboard de métricas gerenciais, faturamento e alertas de estoque[cite: 31].
     Route::get('/', [DashboardController::class, 'index'])->name('tenant.dashboard');
+    Route::get('/plano/bloqueado', [DashboardController::class, 'blocked'])->name('tenant.plan.blocked');
 
     // RF-06: Quadro Kanban Operacional[cite: 21].
-    Route::get('/kanban', [KanbanController::class, 'index'])->name('tenant.kanban.index');
+    Route::get('/kanban', [KanbanController::class, 'index'])->middleware('feature:kanban')->name('tenant.kanban.index');
     // Movimentação de cartões entre colunas[cite: 22].
-    Route::patch('/kanban/mover', [KanbanController::class, 'updateCardPosition'])->name('tenant.kanban.move');
+    Route::patch('/kanban/mover', [KanbanController::class, 'updateCardPosition'])->middleware('feature:kanban')->name('tenant.kanban.move');
+    Route::post('/kanban/colunas', [KanbanController::class, 'storeColumn'])->middleware('feature:kanban')->name('tenant.kanban.columns.store');
+    Route::patch('/kanban/colunas/{column}', [KanbanController::class, 'updateColumn'])->middleware('feature:kanban')->name('tenant.kanban.columns.update');
+    Route::delete('/kanban/colunas/{column}', [KanbanController::class, 'destroyColumn'])->middleware('feature:kanban')->name('tenant.kanban.columns.destroy');
 
     // Gerenciamento interno de Ordens de Serviço (CRUD)
-    Route::resource('/ordens-servico', ServiceOrderController::class);
+    Route::resource('/ordens-servico', ServiceOrderController::class)->middleware('feature:kanban');
     // Vinculação de insumos na OS e cálculo de margem de lucro[cite: 28, 29].
-    Route::post('/ordens-servico/{id}/itens', [ServiceOrderController::class, 'attachItems'])->name('tenant.os.attach_items');
+    Route::post('/ordens-servico/{id}/itens', [ServiceOrderController::class, 'attachItems'])->middleware('feature:inventory')->name('tenant.os.attach_items');
 
     // RF-07: Time Tracking (Play/Pause no cronômetro do técnico)[cite: 23].
-    Route::post('/ordens-servico/{id}/time-tracking/start', [TimeTrackingController::class, 'start'])->name('tenant.tracking.start');
-    Route::post('/ordens-servico/{id}/time-tracking/stop', [TimeTrackingController::class, 'stop'])->name('tenant.tracking.stop');
+    Route::post('/ordens-servico/{id}/time-tracking/start', [TimeTrackingController::class, 'start'])->middleware('feature:time_tracking')->name('tenant.tracking.start');
+    Route::post('/ordens-servico/{id}/time-tracking/stop', [TimeTrackingController::class, 'stop'])->middleware('feature:time_tracking')->name('tenant.tracking.stop');
 
     // RF-08: Gestão de Insumos e Produtos[cite: 24].
     // CRUD completo para itens, definição de uso interno ou flag de venda pública[cite: 25, 26, 27].
-    Route::resource('/estoque', ItemController::class);
+    Route::resource('/estoque', ItemController::class)->middleware('feature:inventory');
 
     // RF-09: Agenda e Cronograma de entregas[cite: 30].
-    Route::get('/agenda', [ScheduleController::class, 'index'])->name('tenant.schedule.index');
+    Route::get('/agenda', [ScheduleController::class, 'index'])->middleware('feature:schedule')->name('tenant.schedule.index');
+    Route::patch('/agenda/ordens-servico/{id}', [ScheduleController::class, 'updateServiceOrderSchedule'])->middleware('feature:schedule')->name('tenant.schedule.service_orders.update');
 
     // RF-13: Painel de Customização de Layout do microssite[cite: 32].
-    Route::get('/customizacao', [CustomizationController::class, 'edit'])->name('tenant.customization.edit');
+    Route::get('/customizacao', [CustomizationController::class, 'edit'])->middleware('feature:customization_basic')->name('tenant.customization.edit');
     // Atualização de banners, textos, Instagram e iFrame do Google Maps[cite: 33].
-    Route::put('/customizacao', [CustomizationController::class, 'update'])->name('tenant.customization.update');
+    Route::put('/customizacao', [CustomizationController::class, 'update'])->middleware('feature:customization_basic')->name('tenant.customization.update');
 });
 
 Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'is_superadmin']], function () {
@@ -64,11 +70,15 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'is_superadmin']], f
 
     // RF-11.3: Listagem de todas as assistências cadastradas e status de assinatura[cite: 43].
     Route::get('/assistencias', [TenantManagementController::class, 'index'])->name('admin.tenants.index');
+    Route::get('/assistencias/create', [TenantManagementController::class, 'create'])->name('admin.tenants.create');
+    Route::post('/assistencias', [TenantManagementController::class, 'store'])->name('admin.tenants.store');
     Route::get('/assistencias/{id}', [TenantManagementController::class, 'show'])->name('admin.tenants.show');
 
     // Modulo de suspensão de acesso por atraso no gateway[cite: 44].
     Route::post('/assistencias/{id}/suspender', [SubscriptionController::class, 'suspend'])->name('admin.subscriptions.suspend');
     Route::post('/assistencias/{id}/reativar', [SubscriptionController::class, 'reactivate'])->name('admin.subscriptions.reactivate');
+    Route::post('/assistencias/{id}/cancelar', [SubscriptionController::class, 'cancel'])->name('admin.subscriptions.cancel');
+    Route::patch('/assistencias/{id}/cobranca', [SubscriptionController::class, 'updateBilling'])->name('admin.subscriptions.billing');
 
     // RF-11.4: Configuração de dias de Trial (Período de testes)[cite: 45].
     Route::patch('/assistencias/{id}/trial', [SubscriptionController::class, 'updateTrialDays'])->name('admin.subscriptions.trial');
@@ -92,5 +102,10 @@ Route::group(['prefix' => '{slug}'], function () {
     Route::patch('/acompanhamento/{os_id}/orcamento', [PublicTrackingController::class, 'updateBudgetStatus'])->name('public.tracking.budget');
 
     // RF-05: Checkout e Split de Pagamento automatizado[cite: 10, 11].
+    Route::get('/checkout', [PublicCheckoutController::class, 'cart'])->name('public.checkout.cart');
+    Route::post('/checkout/carrinho', [PublicCheckoutController::class, 'addProduct'])->name('public.checkout.cart.add');
     Route::post('/checkout', [PublicCheckoutController::class, 'process'])->name('public.checkout.process');
+    Route::post('/checkout/orcamento/{os_id}', [PublicCheckoutController::class, 'createBudgetOrder'])->name('public.checkout.budget');
+    Route::get('/checkout/pedidos/{order}', [PublicCheckoutController::class, 'showOrder'])->name('public.checkout.order.show');
+    Route::patch('/checkout/pedidos/{order}/cancelar', [PublicCheckoutController::class, 'cancelOrder'])->name('public.checkout.order.cancel');
 });

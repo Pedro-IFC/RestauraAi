@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant_context' => \App\Http\Middleware\TenantContextMiddleware::class,
             'is_superadmin'  => \App\Http\Middleware\IsSuperAdminMiddleware::class,
+            'feature'        => \App\Http\Middleware\EnsurePlanFeatureMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

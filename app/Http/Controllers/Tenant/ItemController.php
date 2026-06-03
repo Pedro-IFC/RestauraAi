@@ -16,7 +16,15 @@ class ItemController extends Controller
     public function index(Request $request)
     {
         // Exemplo prático de filtro: se passar ?low_stock=1 na URL, filtra os itens em alerta
-        $query = Item::query();
+        $query = Item::forTenant(Auth::user()->tenant_id);
+
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%'.$request->string('search')->toString().'%');
+        }
+
+        if ($request->filled('type')) {
+            $query->where('type', $request->string('type')->toString());
+        }
 
         if ($request->has('low_stock')) {
             $query->whereColumn('stock_quantity', '<=', 'min_stock_alert');
@@ -41,19 +49,31 @@ class ItemController extends Controller
      */
     public function store(Request $request)
     {
+        $tenant = Auth::user()->tenant;
+
+        if (($tenant->planLimit('max_items') !== null) && Item::forTenant($tenant->id)->count() >= $tenant->planLimit('max_items')) {
+            return back()
+                ->withInput()
+                ->withErrors(['plan' => 'Limite de itens de estoque atingido para o plano atual.']);
+        }
+
         $validated = $request->validate([
-            'name'            => 'required|string|max:255',
-            'type'            => 'required|in:product,supply',
-            'is_for_sale'     => 'boolean',
-            'cost_price'      => 'required|numeric|min:0',
-            'sale_price'      => 'required|numeric|min:0',
-            'stock_quantity'  => 'required|integer|min:0',
-            'min_stock_alert' => 'required|integer|min:0',
+            'name' => 'required|string|max:255',
+            'type' => 'required|in:product,supply',
+            'is_for_sale' => 'boolean',
+            'cost_price' => 'required|numeric|min:0',
+            'sale_price' => 'required|numeric|min:0',
+            'stock_quantity' => 'required|numeric|min:0',
+            'min_stock_alert' => 'required|numeric|min:0',
         ]);
 
         // Garantimos que checkboxes booleanos ausentes no request sejam tratados como false
-        $validated['is_for_sale'] = $request->has('is_for_sale');
-        
+        $validated['is_for_sale'] = $validated['type'] === 'product' && $request->has('is_for_sale');
+
+        if ($validated['is_for_sale']) {
+            $this->ensurePublicProductAllowed($tenant);
+        }
+
         // Atribui o tenant_id da assistência atual
         $validated['tenant_id'] = Auth::user()->tenant_id;
 
@@ -71,8 +91,8 @@ class ItemController extends Controller
     public function show($id)
     {
         // Carrega o item e as OSs onde ele foi utilizado (através do relacionamento pivot)
-        $item = Item::with(['serviceOrders' => function ($query) {
-            $query->latest()->limit(10); // Mostra as últimas 10 OSs que usaram esta peça
+        $item = Item::forTenant(Auth::user()->tenant_id)->with(['serviceOrders' => function ($query) {
+            $query->orderByDesc('service_orders.created_at')->limit(10); // Mostra as últimas 10 OSs que usaram esta peça
         }])->findOrFail($id);
 
         return view('tenant.items.show', compact('item'));
@@ -83,7 +103,7 @@ class ItemController extends Controller
      */
     public function edit($id)
     {
-        $item = Item::findOrFail($id);
+        $item = Item::forTenant(Auth::user()->tenant_id)->findOrFail($id);
 
         return view('tenant.items.edit', compact('item'));
     }
@@ -93,21 +113,26 @@ class ItemController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $item = Item::findOrFail($id);
+        $tenant = Auth::user()->tenant;
+        $item = Item::forTenant($tenant->id)->findOrFail($id);
 
         $validated = $request->validate([
-            'name'            => 'sometimes|required|string|max:255',
-            'type'            => 'sometimes|required|in:product,supply',
-            'is_for_sale'     => 'boolean',
-            'cost_price'      => 'sometimes|required|numeric|min:0',
-            'sale_price'      => 'sometimes|required|numeric|min:0',
-            'stock_quantity'  => 'sometimes|required|integer|min:0',
-            'min_stock_alert' => 'sometimes|required|integer|min:0',
+            'name' => 'sometimes|required|string|max:255',
+            'type' => 'sometimes|required|in:product,supply',
+            'is_for_sale' => 'boolean',
+            'cost_price' => 'sometimes|required|numeric|min:0',
+            'sale_price' => 'sometimes|required|numeric|min:0',
+            'stock_quantity' => 'sometimes|required|numeric|min:0',
+            'min_stock_alert' => 'sometimes|required|numeric|min:0',
         ]);
 
         // Trata o checkbox do form HTML (se não for enviado, é false)
         if ($request->has('is_for_sale_submitted')) {
-            $validated['is_for_sale'] = $request->has('is_for_sale');
+            $validated['is_for_sale'] = ($validated['type'] ?? $item->type) === 'product' && $request->has('is_for_sale');
+        }
+
+        if (($validated['is_for_sale'] ?? false) && ! $item->is_for_sale) {
+            $this->ensurePublicProductAllowed($tenant);
         }
 
         $item->update($validated);
@@ -123,12 +148,25 @@ class ItemController extends Controller
      */
     public function destroy($id)
     {
-        $item = Item::findOrFail($id);
-        
+        $item = Item::forTenant(Auth::user()->tenant_id)->findOrFail($id);
+
         $item->delete();
 
         return redirect()
             ->route('estoque.index')
             ->with('success', 'Item removido do estoque.');
+    }
+
+    private function ensurePublicProductAllowed($tenant): void
+    {
+        if (! $tenant->hasFeature('catalog')) {
+            abort(403, 'Catálogo público não disponível no plano atual.');
+        }
+
+        $limit = $tenant->planLimit('max_public_products');
+
+        if ($limit !== null && Item::forTenant($tenant->id)->where('is_for_sale', true)->count() >= $limit) {
+            abort(403, 'Limite de produtos públicos atingido para o plano atual.');
+        }
     }
 }

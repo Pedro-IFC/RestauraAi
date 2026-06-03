@@ -2,13 +2,13 @@
 
 namespace Database\Seeders;
 
+use App\Models\Plan;
+use App\Models\Tenant;
+use App\Models\TenantCustomization;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use App\Models\Tenant;
-use App\Models\User;
-use App\Models\Plan;
-use App\Models\TenantCustomization;
 
 class TenantSeeder extends Seeder
 {
@@ -22,7 +22,7 @@ class TenantSeeder extends Seeder
             ['name' => 'Plano Profissional'],
             [
                 'price_monthly' => 89.90,
-                'features' => ['kanban' => true, 'catalog' => true, 'dashboard' => true],
+                'features' => Plan::presetFeatures('ouro'),
                 'trial_days_allowed' => 7,
             ]
         );
