@@ -1,33 +1,31 @@
 @extends('layouts.app')
 
-@section('title', 'Acompanhar chamado')
+@section('title', 'Central de Ordens de Serviço')
 
 @section('content')
-    <div class="mx-auto max-w-2xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <p class="text-sm font-semibold uppercase tracking-wide text-blue-600">{{ $tenant->name }}</p>
-        <h1 class="mt-2 text-2xl font-bold text-gray-900">Acompanhar chamado</h1>
-        <p class="mt-1 text-sm text-gray-600">Consulte pelo número do chamado ou CPF informado na abertura.</p>
+    <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-blue-600">{{ $tenant->name }}</p>
+            <h1 class="mt-1 text-2xl font-bold text-gray-900">Central de Ordens de Serviço</h1>
+            <p class="mt-1 text-sm text-gray-600">Ordens ativas e históricas vinculadas à sua conta nesta assistência.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ route('public.account.index', $tenant->slug) }}" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Minha Conta
+            </a>
+            <a href="{{ route('public.os.create', $tenant->slug) }}" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                Abrir chamado
+            </a>
+        </div>
+    </div>
 
-        <form method="POST" action="{{ route('public.tracking.show', $tenant->slug) }}" class="mt-6 space-y-4">
-            @csrf
-
-            <div>
-                <label for="lookup" class="block text-sm font-medium text-gray-700">CPF ou número do chamado</label>
-                <input id="lookup" name="lookup" type="text" value="{{ old('lookup') }}" required
-                    class="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                @error('lookup')
-                    <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                @enderror
+    <div class="space-y-4">
+        @forelse ($authenticatedOrders as $order)
+            @include('public.tracking.partials.service-order-card', ['order' => $order, 'tenant' => $tenant])
+        @empty
+            <div class="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
+                Nenhuma ordem de serviço vinculada à sua conta nesta assistência.
             </div>
-
-            <div class="flex flex-col gap-3 sm:flex-row sm:justify-between">
-                <a href="{{ route('public.store.index', $tenant->slug) }}" class="text-sm font-semibold text-gray-600 hover:text-gray-900">
-                    Voltar para a página da assistência
-                </a>
-                <button class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
-                    Consultar
-                </button>
-            </div>
-        </form>
+        @endforelse
     </div>
 @endsection

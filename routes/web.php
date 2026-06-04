@@ -4,6 +4,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\WebsiteController;
 
 use App\Http\Controllers\PublicStorefrontController;
+use App\Http\Controllers\PublicCustomerAuthController;
+use App\Http\Controllers\PublicCustomerAccountController;
 use App\Http\Controllers\PublicServiceOrderController;
 use App\Http\Controllers\PublicTrackingController;
 use App\Http\Controllers\PublicCheckoutController;
@@ -19,6 +21,7 @@ use App\Http\Controllers\Tenant\CustomizationController;
 use App\Http\Controllers\Admin\PlanController;
 use App\Http\Controllers\Admin\TenantManagementController;
 use App\Http\Controllers\Admin\SubscriptionController;
+use App\Http\Controllers\Admin\ConsumerPrivacyController;
 
 Route::get('/', [WebsiteController::class, 'index'])->name('public.store.index');
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -74,6 +77,12 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'is_superadmin']], f
     Route::post('/assistencias', [TenantManagementController::class, 'store'])->name('admin.tenants.store');
     Route::get('/assistencias/{id}', [TenantManagementController::class, 'show'])->name('admin.tenants.show');
 
+    // RF-17: LGPD e gestão de contas de consumidores.
+    Route::get('/consumidores', [ConsumerPrivacyController::class, 'index'])->name('admin.consumers.index');
+    Route::get('/consumidores/{consumer}', [ConsumerPrivacyController::class, 'show'])->name('admin.consumers.show');
+    Route::get('/consumidores/{consumer}/exportar', [ConsumerPrivacyController::class, 'export'])->name('admin.consumers.export');
+    Route::delete('/consumidores/{consumer}', [ConsumerPrivacyController::class, 'destroy'])->name('admin.consumers.destroy');
+
     // Modulo de suspensão de acesso por atraso no gateway[cite: 44].
     Route::post('/assistencias/{id}/suspender', [SubscriptionController::class, 'suspend'])->name('admin.subscriptions.suspend');
     Route::post('/assistencias/{id}/reativar', [SubscriptionController::class, 'reactivate'])->name('admin.subscriptions.reactivate');
@@ -89,6 +98,22 @@ Route::group(['prefix' => '{slug}'], function () {
     // RF-01, RF-02, RF-12: Renderização da página pública, banners, mapas e catálogo[cite: 3, 4, 13, 14, 18].
     Route::get('/', [PublicStorefrontController::class, 'index'])->name('public.store.index');
 
+    // RF-14: autenticação unificada do cliente com contexto da assistência acessada.
+    Route::get('/login', [PublicCustomerAuthController::class, 'showLoginForm'])->name('public.customer.login');
+    Route::post('/login', [PublicCustomerAuthController::class, 'login'])->name('public.customer.login.submit');
+    Route::post('/login/rapido', [PublicCustomerAuthController::class, 'requestMagicCode'])->name('public.customer.magic.request');
+    Route::get('/login/codigo', [PublicCustomerAuthController::class, 'showMagicCodeForm'])->name('public.customer.magic.verify');
+    Route::post('/login/codigo', [PublicCustomerAuthController::class, 'verifyMagicCode'])->name('public.customer.magic.verify.submit');
+    Route::get('/cadastro', [PublicCustomerAuthController::class, 'showRegisterForm'])->name('public.customer.register');
+    Route::post('/cadastro', [PublicCustomerAuthController::class, 'register'])->name('public.customer.register.submit');
+
+    // RF-16: painel restrito do cliente com dados, equipamentos, pedidos e endereços.
+    Route::get('/minha-conta', [PublicCustomerAccountController::class, 'index'])->name('public.account.index');
+    Route::patch('/minha-conta/perfil', [PublicCustomerAccountController::class, 'updateProfile'])->name('public.account.profile.update');
+    Route::post('/minha-conta/enderecos', [PublicCustomerAccountController::class, 'storeAddress'])->name('public.account.addresses.store');
+    Route::patch('/minha-conta/enderecos/{address}', [PublicCustomerAccountController::class, 'updateAddress'])->name('public.account.addresses.update');
+    Route::delete('/minha-conta/enderecos/{address}', [PublicCustomerAccountController::class, 'destroyAddress'])->name('public.account.addresses.destroy');
+
     // RF-03: Portal de abertura de chamados pelo cliente[cite: 6].
     Route::get('/chamados/novo', [PublicServiceOrderController::class, 'create'])->name('public.os.create');
     // Envio dos dados do aparelho, sintomas e fotos[cite: 7].
@@ -100,6 +125,7 @@ Route::group(['prefix' => '{slug}'], function () {
     Route::post('/acompanhamento/buscar', [PublicTrackingController::class, 'show'])->name('public.tracking.show');
     // Aprovação ou recusa de orçamentos enviados[cite: 9].
     Route::patch('/acompanhamento/{os_id}/orcamento', [PublicTrackingController::class, 'updateBudgetStatus'])->name('public.tracking.budget');
+    Route::post('/acompanhamento/{os_id}/anexos', [PublicTrackingController::class, 'storeAttachment'])->name('public.tracking.attachments.store');
 
     // RF-05: Checkout e Split de Pagamento automatizado[cite: 10, 11].
     Route::get('/checkout', [PublicCheckoutController::class, 'cart'])->name('public.checkout.cart');

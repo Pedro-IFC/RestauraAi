@@ -36,6 +36,14 @@ class AuthController extends Controller
                 return redirect()->intended(route('planos.index'));
             }
 
+            if (Auth::user()->role === 'customer') {
+                $slug = $request->session()->get('public_tenant_slug');
+
+                return $slug
+                    ? redirect()->intended(route('public.account.index', $slug))
+                    : redirect()->intended('/');
+            }
+
             // Redireciona para o painel (ou para a página que ele tentou acessar antes)
             return redirect()->intended(route('tenant.dashboard'));
         }

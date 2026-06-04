@@ -11,41 +11,56 @@ class PublicTrackingController extends Controller
     public function index(Request $request, $slug)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
 
-        return view('public.tracking.index', compact('tenant'));
+        if (! $request->user()) {
+            return redirect()->route('public.customer.login', [
+                'slug' => $tenant->slug,
+                'intended' => '/'.$tenant->slug.'/acompanhamento',
+            ]);
+        }
+
+        abort_unless($request->user()->isCustomer(), 403);
+
+        $authenticatedOrders = $this->ordersForAuthenticatedCustomer($tenant)->get();
+
+        return view('public.tracking.index', compact('tenant', 'authenticatedOrders'));
     }
 
     public function show(Request $request, $slug)
     {
         $tenant = $this->publicTenant($slug);
-        $validated = $request->validate([
-            'lookup' => 'required|string|max:30',
-        ]);
+        $this->rememberTenantContext($request, $tenant);
 
-        $orders = $this->ordersForLookup($tenant, $validated['lookup'])->get();
-
-        if ($orders->isEmpty()) {
-            return back()
-                ->withInput()
-                ->withErrors(['lookup' => 'Nenhum chamado encontrado para estes dados.']);
+        if (! $request->user()) {
+            return redirect()->route('public.customer.login', [
+                'slug' => $tenant->slug,
+                'intended' => '/'.$tenant->slug.'/acompanhamento',
+            ]);
         }
+
+        abort_unless($request->user()->isCustomer(), 403);
+
+        $orders = $this->ordersForAuthenticatedCustomer($tenant)->get();
 
         return view('public.tracking.show', [
             'tenant' => $tenant,
             'orders' => $orders,
-            'lookup' => $validated['lookup'],
+            'lookup' => null,
         ]);
     }
 
     public function updateBudgetStatus(Request $request, $slug, $os_id)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
+        abort_unless($request->user()?->isCustomer(), 403);
+
         $validated = $request->validate([
-            'lookup' => 'required|string|max:30',
             'decision' => 'required|in:approved,rejected',
         ]);
 
-        $serviceOrder = $this->ordersForLookup($tenant, $validated['lookup'])
+        $serviceOrder = $this->ordersForAuthenticatedCustomer($tenant)
             ->where('id', $os_id)
             ->firstOrFail();
 
@@ -64,6 +79,35 @@ class PublicTrackingController extends Controller
                 : 'Orçamento recusado. A assistência foi sinalizada.');
     }
 
+    public function storeAttachment(Request $request, string $slug, int $os_id)
+    {
+        $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
+        abort_unless($request->user()?->isCustomer(), 403);
+
+        $validated = $request->validate([
+            'attachments' => ['required', 'array', 'max:6'],
+            'attachments.*' => ['file', 'mimes:jpg,jpeg,png,webp,mp4,mov,avi', 'max:20480'],
+        ]);
+
+        $serviceOrder = $this->ordersForAuthenticatedCustomer($tenant)
+            ->where('id', $os_id)
+            ->firstOrFail();
+
+        $attachments = collect($request->file('attachments', []))
+            ->map(fn ($file) => $file->store('service-orders/'.$tenant->id, 'public'))
+            ->values()
+            ->all();
+
+        $serviceOrder->update([
+            'attachments' => array_values(array_merge($serviceOrder->attachments ?? [], $attachments)),
+        ]);
+
+        return redirect()
+            ->route('public.tracking.index', $tenant->slug)
+            ->with('success', 'Anexos adicionados ao chamado #'.$serviceOrder->id.'.');
+    }
+
     private function publicTenant(string $slug): Tenant
     {
         $tenant = Tenant::where('slug', $slug)->firstOrFail();
@@ -75,28 +119,20 @@ class PublicTrackingController extends Controller
         return $tenant;
     }
 
-    private function ordersForLookup(Tenant $tenant, string $lookup)
+    private function ordersForAuthenticatedCustomer(Tenant $tenant)
     {
-        $digits = preg_replace('/\D+/', '', $lookup);
+        $user = auth()->user();
 
         return ServiceOrder::with(['customer', 'kanbanColumn'])
             ->where('tenant_id', $tenant->id)
-            ->where(function ($query) use ($lookup, $digits) {
-                if ($digits !== '') {
-                    $query->orWhere('id', (int) $digits);
-                }
-
-                $query->orWhereHas('customer', function ($customerQuery) use ($lookup, $digits) {
-                    $customerQuery->where('cpf', $lookup);
-
-                    if ($digits !== '') {
-                        $customerQuery->orWhereRaw(
-                            "REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') = ?",
-                            [$digits]
-                        );
-                    }
-                });
-            })
+            ->when(! $user?->isCustomer(), fn ($query) => $query->whereRaw('1 = 0'))
+            ->whereHas('customer', fn ($query) => $query->where('user_id', $user?->id))
             ->latest();
+    }
+
+    private function rememberTenantContext(Request $request, Tenant $tenant): void
+    {
+        $request->session()->put('public_tenant_id', $tenant->id);
+        $request->session()->put('public_tenant_slug', $tenant->slug);
     }
 }

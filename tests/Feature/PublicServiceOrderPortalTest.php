@@ -7,8 +7,10 @@ use App\Models\KanbanColumn;
 use App\Models\Plan;
 use App\Models\ServiceOrder;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -44,13 +46,22 @@ class PublicServiceOrderPortalTest extends TestCase
         Storage::disk('public')->assertExists($serviceOrder->attachments[0]);
     }
 
-    public function test_customer_can_track_order_by_cpf_and_approve_budget(): void
+    public function test_authenticated_customer_can_track_order_and_approve_budget(): void
     {
         $tenant = $this->tenant('rf04-assistencia');
+        $user = User::create([
+            'name' => 'Cliente Acompanhamento',
+            'email' => 'cliente-rf04@example.com',
+            'password' => Hash::make('password123'),
+            'role' => 'customer',
+            'tenant_id' => null,
+        ]);
         $customer = Customer::create([
             'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
             'name' => 'Cliente Acompanhamento',
             'cpf' => '987.654.321-00',
+            'email' => $user->email,
         ]);
         $column = KanbanColumn::create([
             'tenant_id' => $tenant->id,
@@ -68,9 +79,8 @@ class PublicServiceOrderPortalTest extends TestCase
             'total_price' => 350,
         ]);
 
-        $this->post('/rf04-assistencia/acompanhamento/buscar', [
-            'lookup' => '98765432100',
-        ])
+        $this->actingAs($user)
+            ->get('/rf04-assistencia/acompanhamento')
             ->assertOk()
             ->assertSee('Chamado #'.$serviceOrder->id)
             ->assertSee('Na Bancada')
@@ -78,8 +88,7 @@ class PublicServiceOrderPortalTest extends TestCase
             ->assertSee('Aprovar orçamento')
             ->assertSee('Recusar orçamento');
 
-        $this->patch('/rf04-assistencia/acompanhamento/'.$serviceOrder->id.'/orcamento', [
-            'lookup' => '98765432100',
+        $this->actingAs($user)->patch('/rf04-assistencia/acompanhamento/'.$serviceOrder->id.'/orcamento', [
             'decision' => 'approved',
         ])->assertRedirect(route('public.tracking.index', $tenant->slug));
 
@@ -89,14 +98,23 @@ class PublicServiceOrderPortalTest extends TestCase
         $this->assertNotNull($serviceOrder->budget_decided_at);
     }
 
-    public function test_tracking_is_limited_to_the_tenant_slug(): void
+    public function test_tracking_requires_customer_login_and_is_limited_to_tenant_context(): void
     {
         $tenant = $this->tenant('assistencia-certa');
         $otherTenant = $this->tenant('assistencia-errada');
+        $user = User::create([
+            'name' => 'Cliente Outra Assistência',
+            'email' => 'outra-assistencia@example.com',
+            'password' => Hash::make('password123'),
+            'role' => 'customer',
+            'tenant_id' => null,
+        ]);
         $customer = Customer::create([
             'tenant_id' => $otherTenant->id,
+            'user_id' => $user->id,
             'name' => 'Cliente Outra Assistência',
             'cpf' => '111.222.333-44',
+            'email' => $user->email,
         ]);
         $column = KanbanColumn::create([
             'tenant_id' => $otherTenant->id,
@@ -115,13 +133,68 @@ class PublicServiceOrderPortalTest extends TestCase
             'total_price' => 90,
         ]);
 
-        $this->post('/assistencia-certa/acompanhamento/buscar', [
-            'lookup' => '11122233344',
-        ])
-            ->assertSessionHasErrors('lookup')
-            ->assertDontSee('Aparelho de outro tenant');
+        $this->get('/assistencia-certa/acompanhamento')
+            ->assertRedirect(route('public.customer.login', [
+                'slug' => $tenant->slug,
+                'intended' => '/assistencia-certa/acompanhamento',
+            ]));
+
+        $this->actingAs($user)
+            ->get('/assistencia-certa/acompanhamento')
+            ->assertOk()
+            ->assertDontSee('Aparelho de outro tenant')
+            ->assertSee('Nenhuma ordem de serviço');
 
         $this->assertSame($tenant->slug, 'assistencia-certa');
+    }
+
+    public function test_authenticated_customer_can_add_more_service_order_attachments(): void
+    {
+        Storage::fake('public');
+
+        $tenant = $this->tenant('anexos-auth');
+        $user = User::create([
+            'name' => 'Cliente Anexo',
+            'email' => 'anexo@example.com',
+            'password' => Hash::make('password123'),
+            'role' => 'customer',
+            'tenant_id' => null,
+        ]);
+        $customer = Customer::create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'name' => 'Cliente Anexo',
+            'email' => $user->email,
+        ]);
+        $column = KanbanColumn::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Triagem',
+            'order_index' => 1,
+        ]);
+        $serviceOrder = ServiceOrder::create([
+            'tenant_id' => $tenant->id,
+            'customer_id' => $customer->id,
+            'kanban_column_id' => $column->id,
+            'device_model' => 'Tablet',
+            'defect_symptoms' => 'Sem imagem.',
+            'attachments' => ['service-orders/'.$tenant->id.'/inicial.jpg'],
+            'status' => 'pending',
+            'total_cost' => 0,
+            'total_price' => 0,
+        ]);
+
+        $this->actingAs($user)
+            ->post('/anexos-auth/acompanhamento/'.$serviceOrder->id.'/anexos', [
+                'attachments' => [
+                    UploadedFile::fake()->create('novo.jpg', 100, 'image/jpeg'),
+                ],
+            ])
+            ->assertRedirect(route('public.tracking.index', $tenant->slug));
+
+        $serviceOrder->refresh();
+
+        $this->assertCount(2, $serviceOrder->attachments);
+        Storage::disk('public')->assertExists($serviceOrder->attachments[1]);
     }
 
     private function tenant(string $slug): Tenant

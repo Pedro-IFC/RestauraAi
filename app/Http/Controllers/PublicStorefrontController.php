@@ -18,6 +18,9 @@ class PublicStorefrontController extends Controller
 
         abort_unless($tenant->isPubliclyAvailable(), 404);
 
+        $request->session()->put('public_tenant_id', $tenant->id);
+        $request->session()->put('public_tenant_slug', $tenant->slug);
+
         $items = $tenant->hasFeature('catalog')
             ? $tenant->items()
                 ->publicCatalog()

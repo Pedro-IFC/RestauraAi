@@ -9,7 +9,9 @@ use App\Models\KanbanColumn;
 use App\Models\Plan;
 use App\Models\ServiceOrder;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class PublicCheckoutSplitTest extends TestCase
@@ -20,6 +22,7 @@ class PublicCheckoutSplitTest extends TestCase
     {
         $tenant = $this->tenant('checkout-produtos');
         $item = $this->item($tenant, 'Tela LCD', 3, 200);
+        [$user, $customer] = $this->customer($tenant, 'checkout-produtos@example.com');
 
         $this->post('/checkout-produtos/checkout/carrinho', [
             'item_id' => $item->id,
@@ -27,20 +30,22 @@ class PublicCheckoutSplitTest extends TestCase
         ])
             ->assertRedirect(route('public.checkout.cart', $tenant->slug));
 
-        $this->get('/checkout-produtos/checkout')
+        $this->actingAs($user)
+            ->get('/checkout-produtos/checkout')
             ->assertOk()
             ->assertSee('Tela LCD')
             ->assertSee('R$ 400,00')
             ->assertSee('R$ 40,00')
             ->assertSee('R$ 360,00');
 
-        $this->post('/checkout-produtos/checkout', [
+        $this->actingAs($user)->post('/checkout-produtos/checkout', [
             'payment_method' => 'pix',
         ])->assertRedirect();
 
         $order = CheckoutOrder::with('items')->firstOrFail();
 
         $this->assertSame('open', $order->status);
+        $this->assertSame($customer->id, $order->customer_id);
         $this->assertSame('products', $order->type);
         $this->assertSame('pix', $order->payment_method);
         $this->assertSame('400.00', (string) $order->total_amount);
@@ -51,6 +56,26 @@ class PublicCheckoutSplitTest extends TestCase
             'id' => $item->id,
             'stock_quantity' => 3,
         ]);
+    }
+
+    public function test_guest_must_login_to_finish_product_checkout(): void
+    {
+        $tenant = $this->tenant('checkout-login');
+        $item = $this->item($tenant, 'Bateria', 2, 150);
+
+        $this->post('/checkout-login/checkout/carrinho', [
+            'item_id' => $item->id,
+            'quantity' => 1,
+        ]);
+
+        $this->post('/checkout-login/checkout', [
+            'payment_method' => 'pix',
+        ])->assertRedirect(route('public.customer.login', [
+            'slug' => $tenant->slug,
+            'intended' => '/checkout-login/checkout',
+        ]));
+
+        $this->assertDatabaseCount('checkout_orders', 0);
     }
 
     public function test_open_checkout_order_can_be_canceled(): void
@@ -79,8 +104,8 @@ class PublicCheckoutSplitTest extends TestCase
     public function test_customer_can_create_open_budget_payment_order_after_approval(): void
     {
         $tenant = $this->tenant('checkout-orcamento');
-        $customer = Customer::create([
-            'tenant_id' => $tenant->id,
+        [$user, $customer] = $this->customer($tenant, 'orcamento@example.com');
+        $customer->update([
             'name' => 'Cliente Orçamento',
             'cpf' => '123.123.123-12',
         ]);
@@ -100,8 +125,7 @@ class PublicCheckoutSplitTest extends TestCase
             'total_price' => 500,
         ]);
 
-        $this->post('/checkout-orcamento/checkout/orcamento/'.$serviceOrder->id, [
-            'lookup' => '12312312312',
+        $this->actingAs($user)->post('/checkout-orcamento/checkout/orcamento/'.$serviceOrder->id, [
             'payment_method' => 'card',
         ])->assertRedirect();
 
@@ -146,5 +170,25 @@ class PublicCheckoutSplitTest extends TestCase
             'stock_quantity' => $stock,
             'min_stock_alert' => 1,
         ]);
+    }
+
+    private function customer(Tenant $tenant, string $email): array
+    {
+        $user = User::create([
+            'name' => 'Cliente Checkout',
+            'email' => $email,
+            'password' => Hash::make('password123'),
+            'role' => 'customer',
+            'tenant_id' => null,
+        ]);
+
+        $customer = Customer::create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+        ]);
+
+        return [$user, $customer];
     }
 }

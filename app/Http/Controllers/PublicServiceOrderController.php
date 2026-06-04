@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\KanbanColumn;
 use App\Models\ServiceOrder;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -26,7 +27,9 @@ class PublicServiceOrderController extends Controller
 
         abort_unless($tenant->hasFeature('kanban'), 404);
 
-        return view('public.service_order.create', compact('tenant'));
+        $customer = $this->authenticatedCustomer($tenant);
+
+        return view('public.service_order.create', compact('tenant', 'customer'));
     }
 
     public function store(Request $request, $slug)
@@ -57,7 +60,7 @@ class PublicServiceOrderController extends Controller
             ->values()
             ->all();
 
-        $serviceOrder = DB::transaction(function () use ($tenant, $validated, $attachments) {
+        $serviceOrder = DB::transaction(function () use ($tenant, $validated, $attachments, $request) {
             $this->ensureDefaultColumns($tenant->id);
 
             $customerData = [
@@ -66,21 +69,7 @@ class PublicServiceOrderController extends Controller
                 'email' => $validated['email'] ?? null,
             ];
 
-            $customer = filled($validated['cpf'])
-                ? Customer::updateOrCreate(
-                    [
-                        'tenant_id' => $tenant->id,
-                        'cpf' => $validated['cpf'],
-                    ],
-                    $customerData
-                )
-                : Customer::create([
-                    'tenant_id' => $tenant->id,
-                    'cpf' => null,
-                    'name' => $validated['name'],
-                    'phone' => $validated['phone'] ?? null,
-                    'email' => $validated['email'] ?? null,
-                ]);
+            $customer = $this->resolveCustomer($tenant, $request->user(), $validated, $customerData);
 
             $firstColumn = KanbanColumn::where('tenant_id', $tenant->id)
                 ->orderBy('order_index')
@@ -120,6 +109,72 @@ class PublicServiceOrderController extends Controller
                 'order_index' => $index + 1,
             ]);
         }
+    }
+
+    private function authenticatedCustomer(Tenant $tenant): ?Customer
+    {
+        $user = auth()->user();
+
+        if (! $user?->isCustomer()) {
+            return null;
+        }
+
+        return Customer::where('tenant_id', $tenant->id)
+            ->where('user_id', $user->id)
+            ->first();
+    }
+
+    private function resolveCustomer(Tenant $tenant, ?User $user, array $validated, array $customerData): Customer
+    {
+        if ($user?->isCustomer()) {
+            $customer = Customer::where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (! $customer && filled($validated['cpf'])) {
+                $customer = Customer::where('tenant_id', $tenant->id)
+                    ->where('cpf', $validated['cpf'])
+                    ->first();
+            }
+
+            if (! $customer) {
+                $customer = Customer::where('tenant_id', $tenant->id)
+                    ->where('email', $user->email)
+                    ->first();
+            }
+
+            $data = array_filter(array_merge($customerData, [
+                'user_id' => $user->id,
+                'cpf' => $validated['cpf'] ?? null,
+            ]), fn ($value) => $value !== null);
+
+            if ($customer) {
+                $customer->update($data);
+
+                return $customer;
+            }
+
+            return Customer::create(array_merge($data, [
+                'tenant_id' => $tenant->id,
+                'cpf' => $validated['cpf'] ?? null,
+            ]));
+        }
+
+        return filled($validated['cpf'])
+            ? Customer::updateOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'cpf' => $validated['cpf'],
+                ],
+                $customerData
+            )
+            : Customer::create([
+                'tenant_id' => $tenant->id,
+                'cpf' => null,
+                'name' => $validated['name'],
+                'phone' => $validated['phone'] ?? null,
+                'email' => $validated['email'] ?? null,
+            ]);
     }
 
     private function publicTenant(string $slug): Tenant

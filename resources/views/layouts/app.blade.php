@@ -17,6 +17,8 @@
         $currentUser = auth()->user();
         $tenant = $currentUser?->tenant;
         $isTenantUser = $currentUser && $tenant && $currentUser->role !== 'superadmin';
+        $isCustomerUser = $currentUser?->isCustomer();
+        $publicSlug = request()->route('slug') ?? session('public_tenant_slug');
         $tenantMenuItems = [];
 
         if ($isTenantUser) {
@@ -65,7 +67,7 @@
                                     Microssite
                                 </a>
                             @endif
-                        @else
+                        @elseif (! $isCustomerUser)
                             <a href="#topo" class="text-sm font-medium text-gray-600 hover:text-blue-600 transition">Início</a>
                             <a href="#recursos" class="text-sm font-medium text-gray-600 hover:text-blue-600 transition">Recursos</a>
                             <a href="#vantagens" class="text-sm font-medium text-gray-600 hover:text-blue-600 transition">Vantagens</a>
@@ -79,6 +81,18 @@
                                 <div class="text-sm font-semibold text-gray-900">{{ $tenant->name }}</div>
                                 <div class="text-xs text-gray-500">{{ $tenant->plan?->name ?? 'Sem plano' }}</div>
                             </div>
+                            <form method="POST" action="{{ route('logout') }}">
+                                @csrf
+                                <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
+                                    Sair
+                                </button>
+                            </form>
+                        @elseif ($isCustomerUser)
+                            @if ($publicSlug)
+                                <a href="{{ route('public.account.index', $publicSlug) }}" class="text-sm font-semibold text-gray-600 hover:text-blue-600">
+                                    Minha conta
+                                </a>
+                            @endif
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf
                                 <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">

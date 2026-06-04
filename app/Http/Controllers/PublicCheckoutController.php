@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\CheckoutOrder;
+use App\Models\Customer;
+use App\Models\CustomerAddress;
 use App\Models\Item;
 use App\Models\ServiceOrder;
 use App\Models\Tenant;
@@ -21,8 +23,21 @@ class PublicCheckoutController extends Controller
 
         $cartItems = $this->cartItems($request, $tenant);
         $split = $this->splitFor($cartItems->sum('total_price'));
+        $addresses = $request->user()?->isCustomer()
+            ? $request->user()->customerAddresses()
+                ->where(function ($query) use ($tenant) {
+                    $query->whereNull('tenant_id')
+                        ->orWhere('tenant_id', $tenant->id);
+                })
+                ->latest('is_default')
+                ->latest()
+                ->get()
+            : collect();
+        $customer = $request->user()?->isCustomer()
+            ? Customer::where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->first()
+            : null;
 
-        return view('public.checkout.cart', compact('tenant', 'cartItems', 'split'));
+        return view('public.checkout.cart', compact('tenant', 'cartItems', 'split', 'addresses', 'customer'));
     }
 
     public function addProduct(Request $request, $slug)
@@ -72,8 +87,17 @@ class PublicCheckoutController extends Controller
         $tenant = $this->publicTenant($slug);
         abort_unless($tenant->hasFeature('catalog'), 404);
 
+        if (! $request->user()?->isCustomer()) {
+            return redirect()->route('public.customer.login', [
+                'slug' => $tenant->slug,
+                'intended' => '/'.$tenant->slug.'/checkout',
+            ])->with('error', 'Entre como cliente para finalizar o checkout.');
+        }
+
         $validated = $request->validate([
             'payment_method' => 'required|in:pix,card',
+            'fulfillment_method' => 'nullable|in:pickup,delivery',
+            'customer_address_id' => 'nullable|integer',
         ]);
 
         $cartItems = $this->cartItems($request, $tenant);
@@ -85,7 +109,10 @@ class PublicCheckoutController extends Controller
         }
 
         try {
-            $order = DB::transaction(function () use ($tenant, $cartItems, $validated) {
+            $customer = $this->authenticatedCustomer($tenant);
+            $address = $this->checkoutAddress($request, $tenant, $customer, $validated);
+
+            $order = DB::transaction(function () use ($tenant, $cartItems, $validated, $customer, $address) {
                 $itemsById = Item::forTenant($tenant->id)
                     ->publicCatalog()
                     ->lockForUpdate()
@@ -104,9 +131,13 @@ class PublicCheckoutController extends Controller
                 $split = $this->splitFor($cartItems->sum('total_price'));
                 $order = CheckoutOrder::create([
                     'tenant_id' => $tenant->id,
+                    'customer_id' => $customer?->id,
+                    'customer_address_id' => $address?->id,
                     'type' => 'products',
                     'status' => CheckoutOrder::STATUS_OPEN,
                     'payment_method' => $validated['payment_method'],
+                    'fulfillment_method' => $validated['fulfillment_method'] ?? 'pickup',
+                    'fulfillment_status' => CheckoutOrder::FULFILLMENT_PENDING,
                     'total_amount' => $split['total'],
                     'fixgo_commission_rate' => self::FIXGO_COMMISSION_RATE,
                     'fixgo_commission_amount' => $split['fixgo'],
@@ -143,12 +174,19 @@ class PublicCheckoutController extends Controller
     public function createBudgetOrder(Request $request, $slug, $os_id)
     {
         $tenant = $this->publicTenant($slug);
+
+        if (! $request->user()?->isCustomer()) {
+            return redirect()->route('public.customer.login', [
+                'slug' => $tenant->slug,
+                'intended' => '/'.$tenant->slug.'/acompanhamento',
+            ])->with('error', 'Entre como cliente para pagar o orçamento.');
+        }
+
         $validated = $request->validate([
-            'lookup' => 'required|string|max:30',
             'payment_method' => 'required|in:pix,card',
         ]);
 
-        $serviceOrder = $this->serviceOrderForLookup($tenant, $os_id, $validated['lookup']);
+        $serviceOrder = $this->serviceOrderForAuthenticatedCustomer($tenant, $os_id);
 
         abort_unless($serviceOrder->status === 'approved' && (float) $serviceOrder->total_price > 0, 404);
 
@@ -157,6 +195,7 @@ class PublicCheckoutController extends Controller
         $order = DB::transaction(function () use ($tenant, $serviceOrder, $validated, $split) {
             $order = CheckoutOrder::create([
                 'tenant_id' => $tenant->id,
+                'customer_id' => $serviceOrder->customer_id,
                 'service_order_id' => $serviceOrder->id,
                 'type' => 'service_order_budget',
                 'status' => CheckoutOrder::STATUS_OPEN,
@@ -188,7 +227,7 @@ class PublicCheckoutController extends Controller
 
         abort_unless($order->tenant_id === $tenant->id, 404);
 
-        $order->load(['items', 'serviceOrder']);
+        $order->load(['items', 'serviceOrder', 'customerAddress']);
 
         return view('public.checkout.order', compact('tenant', 'order'));
     }
@@ -253,27 +292,59 @@ class PublicCheckoutController extends Controller
         ];
     }
 
-    private function serviceOrderForLookup(Tenant $tenant, int $serviceOrderId, string $lookup): ServiceOrder
+    private function serviceOrderForAuthenticatedCustomer(Tenant $tenant, int $serviceOrderId): ServiceOrder
     {
-        $digits = preg_replace('/\D+/', '', $lookup);
+        $user = auth()->user();
+
+        abort_unless($user?->isCustomer(), 403);
 
         return ServiceOrder::where('tenant_id', $tenant->id)
             ->where('id', $serviceOrderId)
-            ->where(function ($query) use ($lookup, $digits) {
-                if ($digits !== '') {
-                    $query->orWhere('id', (int) $digits);
-                }
+            ->whereHas('customer', fn ($query) => $query->where('user_id', $user->id))
+            ->firstOrFail();
+    }
 
-                $query->orWhereHas('customer', function ($customerQuery) use ($lookup, $digits) {
-                    $customerQuery->where('cpf', $lookup);
+    private function authenticatedCustomer(Tenant $tenant): ?Customer
+    {
+        $user = auth()->user();
 
-                    if ($digits !== '') {
-                        $customerQuery->orWhereRaw(
-                            "REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') = ?",
-                            [$digits]
-                        );
-                    }
-                });
+        if (! $user?->isCustomer()) {
+            return null;
+        }
+
+        return Customer::firstOrCreate(
+            [
+                'tenant_id' => $tenant->id,
+                'user_id' => $user->id,
+            ],
+            [
+                'name' => $user->name,
+                'email' => $user->email,
+            ]
+        );
+    }
+
+    private function checkoutAddress(Request $request, Tenant $tenant, ?Customer $customer, array $validated): ?CustomerAddress
+    {
+        if (($validated['fulfillment_method'] ?? 'pickup') !== 'delivery') {
+            return null;
+        }
+
+        abort_unless($customer, 403);
+
+        $addressId = $validated['customer_address_id'] ?? null;
+
+        if (! $addressId) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'customer_address_id' => 'Selecione um endereço para entrega.',
+            ]);
+        }
+
+        return $request->user()->customerAddresses()
+            ->where('id', $addressId)
+            ->where(function ($query) use ($tenant) {
+                $query->whereNull('tenant_id')
+                    ->orWhere('tenant_id', $tenant->id);
             })
             ->firstOrFail();
     }

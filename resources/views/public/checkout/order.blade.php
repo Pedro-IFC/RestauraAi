@@ -49,6 +49,14 @@
                     <dd class="font-semibold text-gray-900">{{ $methodLabels[$order->payment_method] ?? 'A definir' }}</dd>
                 </div>
                 <div class="flex justify-between gap-3">
+                    <dt class="text-gray-600">Entrega/retirada</dt>
+                    <dd class="font-semibold text-gray-900">{{ $order->fulfillmentMethodLabel() }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <dt class="text-gray-600">Status logístico</dt>
+                    <dd class="font-semibold text-gray-900">{{ $order->fulfillmentStatusLabel() }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
                     <dt class="text-gray-600">Total</dt>
                     <dd class="font-semibold text-gray-900">R$ {{ number_format((float) $order->total_amount, 2, ',', '.') }}</dd>
                 </div>
@@ -65,6 +73,13 @@
             <div class="mt-5 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                 Integração de pagamento ainda não ativada. Este pedido permanece em aberto para implementação futura.
             </div>
+
+            @if ($order->customerAddress)
+                <div class="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                    <div class="font-semibold text-gray-900">Endereço</div>
+                    <div class="mt-1">{{ $order->customerAddress->formatted() }}</div>
+                </div>
+            @endif
 
             @if ($order->canBeCanceled())
                 <form method="POST" action="{{ route('public.checkout.order.cancel', [$tenant->slug, $order]) }}" class="mt-4">

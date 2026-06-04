@@ -33,6 +33,17 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
+                    @if (auth()->user()?->isCustomer())
+                        <a href="{{ route('public.account.index', $tenant->slug) }}"
+                            class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                            Minha conta
+                        </a>
+                    @else
+                        <a href="{{ route('public.customer.login', $tenant->slug) }}"
+                            class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                            Entrar
+                        </a>
+                    @endif
                     <a href="{{ route('public.os.create', $tenant->slug) }}"
                         class="w-fit rounded-lg px-4 py-2 text-sm font-semibold text-white"
                         style="background: {{ $primaryColor }}">

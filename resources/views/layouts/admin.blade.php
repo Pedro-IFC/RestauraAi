@@ -33,6 +33,9 @@
                         <a href="{{ route('admin.tenants.index') }}" class="text-sm font-semibold {{ request()->routeIs('admin.tenants.*') ? 'text-blue-700' : 'text-gray-600 hover:text-blue-600' }}">
                             Assistências
                         </a>
+                        <a href="{{ route('admin.consumers.index') }}" class="text-sm font-semibold {{ request()->routeIs('admin.consumers.*') ? 'text-blue-700' : 'text-gray-600 hover:text-blue-600' }}">
+                            Consumidores
+                        </a>
                     </div>
 
                     <form method="POST" action="{{ route('logout') }}" class="flex items-center">

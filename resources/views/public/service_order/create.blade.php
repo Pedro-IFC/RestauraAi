@@ -3,10 +3,29 @@
 @section('title', 'Abrir chamado')
 
 @section('content')
+    @php
+        $customerName = old('name', $customer?->name ?? auth()->user()?->name);
+        $customerCpf = old('cpf', $customer?->cpf);
+        $customerPhone = old('phone', $customer?->phone);
+        $customerEmail = old('email', $customer?->email ?? auth()->user()?->email);
+    @endphp
+
     <div class="mx-auto max-w-3xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <p class="text-sm font-semibold uppercase tracking-wide text-blue-600">{{ $tenant->name }}</p>
         <h1 class="mt-2 text-2xl font-bold text-gray-900">Abrir chamado</h1>
         <p class="mt-1 text-sm text-gray-600">Informe os dados do aparelho para a assistência iniciar a triagem.</p>
+
+        @if (! auth()->user()?->isCustomer())
+            <div class="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <p>Entre com código por e-mail para preencher seus dados e vincular este chamado ao histórico.</p>
+                    <a href="{{ route('public.customer.login', ['slug' => $tenant->slug, 'intended' => '/'.$tenant->slug.'/chamados/novo']) }}"
+                        class="w-fit rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
+                        Login rápido
+                    </a>
+                </div>
+            </div>
+        @endif
 
         <form method="POST" action="{{ route('public.os.store', $tenant->slug) }}" enctype="multipart/form-data" class="mt-6 space-y-5">
             @csrf
@@ -14,25 +33,25 @@
             <div class="grid gap-4 md:grid-cols-2">
                 <div>
                     <label for="name" class="block text-sm font-medium text-gray-700">Nome</label>
-                    <input id="name" name="name" type="text" value="{{ old('name') }}" required
+                    <input id="name" name="name" type="text" value="{{ $customerName }}" required
                         class="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
 
                 <div>
                     <label for="cpf" class="block text-sm font-medium text-gray-700">CPF</label>
-                    <input id="cpf" name="cpf" type="text" value="{{ old('cpf') }}"
+                    <input id="cpf" name="cpf" type="text" value="{{ $customerCpf }}"
                         class="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
 
                 <div>
                     <label for="phone" class="block text-sm font-medium text-gray-700">Telefone</label>
-                    <input id="phone" name="phone" type="text" value="{{ old('phone') }}"
+                    <input id="phone" name="phone" type="text" value="{{ $customerPhone }}"
                         class="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
 
                 <div>
                     <label for="email" class="block text-sm font-medium text-gray-700">E-mail</label>
-                    <input id="email" name="email" type="email" value="{{ old('email') }}"
+                    <input id="email" name="email" type="email" value="{{ $customerEmail }}"
                         class="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
             </div>

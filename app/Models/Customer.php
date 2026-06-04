@@ -13,6 +13,7 @@ class Customer extends Model
      */
     protected $fillable = [
         'tenant_id',
+        'user_id',
         'name',
         'cpf',
         'phone',
@@ -27,11 +28,21 @@ class Customer extends Model
         return $this->belongsTo(Tenant::class);
     }
 
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
     /**
      * Relacionamento: Um cliente pode ter várias Ordens de Serviço.
      */
     public function serviceOrders(): HasMany
     {
         return $this->hasMany(ServiceOrder::class);
+    }
+
+    public function checkoutOrders(): HasMany
+    {
+        return $this->hasMany(CheckoutOrder::class);
     }
 }
