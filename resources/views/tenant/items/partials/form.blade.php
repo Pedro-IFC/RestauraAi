@@ -62,6 +62,27 @@
             value="{{ old('min_stock_alert', $item->min_stock_alert ?? 5) }}" required
             class="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
     </div>
+
+    <div class="md:col-span-2">
+        <label for="images" class="block text-sm font-medium text-gray-700">Imagens do produto</label>
+        <input id="images" name="images[]" type="file" accept="image/*" multiple
+            class="mt-1 block w-full rounded-lg border border-gray-300 text-sm text-gray-700 file:mr-4 file:border-0 file:bg-yellow-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-orange-700 hover:file:bg-yellow-100">
+        <p class="mt-1 text-xs text-gray-500">Cadastre até 3 imagens. Elas aparecem no catálogo público quando o item estiver marcado para venda.</p>
+
+        @if (filled($item->images))
+            <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                @foreach ($item->images as $image)
+                    <label class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                        <img src="{{ asset('storage/'.$image) }}" alt="Imagem atual de {{ $item->name }}" class="h-32 w-full object-cover">
+                        <span class="flex items-center gap-2 p-3 text-sm text-gray-700">
+                            <input type="checkbox" name="remove_images[]" value="{{ $image }}" class="rounded border-gray-300 text-orange-600">
+                            Remover
+                        </span>
+                    </label>
+                @endforeach
+            </div>
+        @endif
+    </div>
 </div>
 
 <div class="mt-8 flex items-center justify-end gap-3">

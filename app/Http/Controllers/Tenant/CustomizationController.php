@@ -16,8 +16,8 @@ class CustomizationController extends Controller
         $customization = TenantCustomization::firstOrCreate(
             ['tenant_id' => $tenant->id],
             [
-                'primary_color' => '#2563eb',
-                'secondary_color' => '#f3f4f6',
+                'primary_color' => '#facc15',
+                'secondary_color' => '#fffbeb',
             ]
         );
 
@@ -32,8 +32,8 @@ class CustomizationController extends Controller
         $customization = TenantCustomization::firstOrCreate(
             ['tenant_id' => $tenant->id],
             [
-                'primary_color' => '#2563eb',
-                'secondary_color' => '#f3f4f6',
+                'primary_color' => '#facc15',
+                'secondary_color' => '#fffbeb',
             ]
         );
 

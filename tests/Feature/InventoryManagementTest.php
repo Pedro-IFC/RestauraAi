@@ -10,6 +10,8 @@ use App\Models\ServiceOrder;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class InventoryManagementTest extends TestCase
@@ -58,6 +60,54 @@ class InventoryManagementTest extends TestCase
             ->assertSee('Tela LCD')
             ->assertDontSee('Fita Kapton')
             ->assertDontSee('Cabo USB oculto');
+    }
+
+    public function test_product_can_have_up_to_three_images_in_public_catalog(): void
+    {
+        Storage::fake('public');
+
+        $tenant = $this->tenant();
+        $user = User::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Tecnico',
+            'email' => 'imagens-produto@example.com',
+            'password' => 'password',
+            'role' => 'admin',
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('estoque.store'), [
+                'name' => 'Tela com imagens',
+                'type' => 'product',
+                'is_for_sale' => '1',
+                'is_for_sale_submitted' => '1',
+                'cost_price' => 80,
+                'sale_price' => 180,
+                'stock_quantity' => 3,
+                'min_stock_alert' => 1,
+                'images' => [
+                    UploadedFile::fake()->create('frente.jpg', 100, 'image/jpeg'),
+                    UploadedFile::fake()->create('verso.jpg', 100, 'image/jpeg'),
+                    UploadedFile::fake()->create('detalhe.jpg', 100, 'image/jpeg'),
+                ],
+            ])
+            ->assertRedirect(route('estoque.index'));
+
+        $item = Item::where('name', 'Tela com imagens')->firstOrFail();
+
+        $this->assertCount(3, $item->images);
+
+        foreach ($item->images as $image) {
+            Storage::disk('public')->assertExists($image);
+        }
+
+        $response = $this->get('/'.$tenant->slug)
+            ->assertOk()
+            ->assertSee('Tela com imagens');
+
+        foreach ($item->images as $image) {
+            $response->assertSee('storage/'.$image, false);
+        }
     }
 
     public function test_attaching_item_to_service_order_decrements_stock_and_recalculates_margin(): void

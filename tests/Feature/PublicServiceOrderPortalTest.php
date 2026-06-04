@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\Item;
 use App\Models\KanbanColumn;
 use App\Models\Plan;
 use App\Models\ServiceOrder;
@@ -44,6 +45,57 @@ class PublicServiceOrderPortalTest extends TestCase
         $this->assertSame('pending', $serviceOrder->status);
         $this->assertCount(1, $serviceOrder->attachments);
         Storage::disk('public')->assertExists($serviceOrder->attachments[0]);
+    }
+
+    public function test_internal_user_cannot_use_public_customer_service_order_actions(): void
+    {
+        $tenant = $this->tenant('interno-bloqueado');
+        $admin = User::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Admin Interno',
+            'email' => 'admin-interno@example.com',
+            'password' => Hash::make('password123'),
+            'role' => 'admin',
+        ]);
+
+        Item::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Produto B2C',
+            'type' => 'product',
+            'is_for_sale' => true,
+            'cost_price' => 50,
+            'sale_price' => 120,
+            'stock_quantity' => 3,
+            'min_stock_alert' => 1,
+        ]);
+
+        $this->actingAs($admin)
+            ->get('/interno-bloqueado')
+            ->assertOk()
+            ->assertSee('visualizando o microssite como usuário interno')
+            ->assertDontSee('Abrir chamado')
+            ->assertDontSee('Acompanhar chamado')
+            ->assertDontSee('Adicionar');
+
+        $this->actingAs($admin)
+            ->get('/interno-bloqueado/chamados/novo')
+            ->assertForbidden();
+
+        $this->actingAs($admin)
+            ->post('/interno-bloqueado/chamados', [
+                'name' => 'Cliente Indevido',
+                'cpf' => '123.456.789-00',
+                'phone' => '(47) 99999-0000',
+                'email' => 'cliente@example.com',
+                'device_model' => 'iPhone 14',
+                'defect_symptoms' => 'Tentativa feita por usuário interno.',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseMissing('service_orders', [
+            'tenant_id' => $tenant->id,
+            'device_model' => 'iPhone 14',
+        ]);
     }
 
     public function test_authenticated_customer_can_track_order_and_approve_budget(): void

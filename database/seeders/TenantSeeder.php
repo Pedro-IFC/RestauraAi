@@ -44,8 +44,8 @@ class TenantSeeder extends Seeder
         TenantCustomization::firstOrCreate(
             ['tenant_id' => $tenant->id],
             [
-                'primary_color' => '#2563eb', // Azul padrão
-                'secondary_color' => '#f3f4f6', // Cinza claro
+                'primary_color' => '#facc15', // Amarelo principal
+                'secondary_color' => '#fffbeb', // Fundo claro quente
                 'about_text' => 'Especialistas em manutenção avançada de computadores, consolas de videojogos e otimização de infraestruturas de rede.',
                 'address_text' => 'Rio do Sul, Santa Catarina, Brasil',
             ]

@@ -21,6 +21,7 @@ class Item extends Model
         'sale_price',
         'stock_quantity',
         'min_stock_alert',
+        'images',
     ];
 
     protected $casts = [
@@ -28,6 +29,7 @@ class Item extends Model
         'cost_price' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'stock_quantity' => 'decimal:2',
+        'images' => 'array',
     ];
 
     public function tenant(): BelongsTo

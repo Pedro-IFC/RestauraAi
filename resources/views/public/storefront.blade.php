@@ -6,12 +6,14 @@
     @php
         $customization = $tenant->customization;
         $canShowAdvancedCustomization = $tenant->hasFeature('customization_advanced');
-        $primaryColor = $customization?->primary_color ?? '#2563eb';
-        $secondaryColor = $customization?->secondary_color ?? '#f3f4f6';
+        $primaryColor = $customization?->primary_color ?? '#facc15';
+        $secondaryColor = $customization?->secondary_color ?? '#fffbeb';
         $banners = $canShowAdvancedCustomization ? ($customization?->banners ?? []) : [];
+        $viewer = auth()->user();
+        $canUseCustomerActions = ! $viewer || $viewer->isCustomer();
     @endphp
 
-    <div class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm">
+    <div class="mb-8 overflow-hidden rounded-lg border border-yellow-200 bg-white shadow-sm">
         @if (filled($banners))
             <div class="grid gap-1 md:grid-cols-{{ min(count($banners), 3) }}">
                 @foreach (array_slice($banners, 0, 3) as $banner)
@@ -20,10 +22,11 @@
             </div>
         @endif
 
+        <div class="h-3 bg-[repeating-linear-gradient(135deg,#111827_0_10px,#ffffff_10px_20px)]"></div>
         <div class="p-6" style="background: {{ $secondaryColor }}">
             <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
-                    <p class="text-sm font-semibold uppercase tracking-wide" style="color: {{ $primaryColor }}">Catálogo público</p>
+                    <p class="text-sm font-extrabold uppercase tracking-wide text-gray-950">Catálogo público</p>
                     <div class="mt-3 flex items-center gap-4">
                         @if ($canShowAdvancedCustomization && $customization?->logo)
                             <img src="{{ asset('storage/'.$customization->logo) }}" alt="Logo {{ $tenant->name }}" class="max-h-16 max-w-40 object-contain">
@@ -33,26 +36,28 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
-                    @if (auth()->user()?->isCustomer())
-                        <a href="{{ route('public.account.index', $tenant->slug) }}"
-                            class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                            Minha conta
+                    @if ($canUseCustomerActions)
+                        @if ($viewer?->isCustomer())
+                            <a href="{{ route('public.account.index', $tenant->slug) }}"
+                                class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                Minha conta
+                            </a>
+                        @else
+                            <a href="{{ route('public.customer.login', $tenant->slug) }}"
+                                class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                Entrar
+                            </a>
+                        @endif
+                        <a href="{{ route('public.os.create', $tenant->slug) }}"
+                            class="w-fit rounded-lg border border-gray-900/10 px-4 py-2 text-sm font-extrabold text-gray-950 shadow-[0_3px_0_#f97316]"
+                            style="background: {{ $primaryColor }}">
+                            Abrir chamado
                         </a>
-                    @else
-                        <a href="{{ route('public.customer.login', $tenant->slug) }}"
+                        <a href="{{ route('public.tracking.index', $tenant->slug) }}"
                             class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                            Entrar
+                            Acompanhar chamado
                         </a>
                     @endif
-                    <a href="{{ route('public.os.create', $tenant->slug) }}"
-                        class="w-fit rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                        style="background: {{ $primaryColor }}">
-                        Abrir chamado
-                    </a>
-                    <a href="{{ route('public.tracking.index', $tenant->slug) }}"
-                        class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                        Acompanhar chamado
-                    </a>
                     @if ($canShowAdvancedCustomization && $customization?->instagram_url)
                         <a href="{{ $customization->instagram_url }}" target="_blank" rel="noopener noreferrer"
                             class="w-fit rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
@@ -77,7 +82,37 @@
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         @forelse ($items as $item)
-            <article class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <article class="rounded-lg border border-yellow-200 bg-white p-5 shadow-sm transition hover:border-orange-400">
+                @php
+                    $images = collect($item->images ?? [])->take(3);
+                    $mainImage = $images->first();
+                @endphp
+                <div class="mb-4 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
+                    @if ($mainImage)
+                        <img src="{{ asset('storage/'.$mainImage) }}" alt="{{ $item->name }}" class="h-44 w-full object-cover" data-product-main-image="{{ $item->id }}">
+                    @else
+                        <div class="flex h-44 items-center justify-center bg-[repeating-linear-gradient(135deg,#111827_0_10px,#ffffff_10px_20px)]">
+                            <span class="rounded-full bg-yellow-300 px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-gray-950 shadow-[0_3px_0_#f97316]">
+                                Produto
+                            </span>
+                        </div>
+                    @endif
+                </div>
+                @if ($images->count() > 1)
+                    <div class="mb-4 grid grid-cols-3 gap-2">
+                        @foreach ($images as $image)
+                            <button type="button"
+                                class="rounded-md border {{ $loop->first ? 'border-orange-500 ring-2 ring-orange-200' : 'border-gray-100' }} bg-white p-0.5 transition hover:border-orange-400"
+                                data-product-thumbnail="{{ $item->id }}"
+                                data-image-src="{{ asset('storage/'.$image) }}"
+                                data-image-alt="{{ $item->name }} - imagem {{ $loop->iteration }}"
+                                aria-label="Ver imagem {{ $loop->iteration }} de {{ $item->name }}"
+                                aria-pressed="{{ $loop->first ? 'true' : 'false' }}">
+                                <img src="{{ asset('storage/'.$image) }}" alt="{{ $item->name }} - imagem {{ $loop->iteration }}" class="h-16 w-full rounded object-cover">
+                            </button>
+                        @endforeach
+                    </div>
+                @endif
                 <div class="flex items-start justify-between gap-4">
                     <div>
                         <h2 class="font-semibold text-gray-900">{{ $item->name }}</h2>
@@ -85,15 +120,17 @@
                     </div>
                     <div class="text-right text-lg font-bold text-gray-900">R$ {{ number_format((float) $item->sale_price, 2, ',', '.') }}</div>
                 </div>
-                <form method="POST" action="{{ route('public.checkout.cart.add', $tenant->slug) }}" class="mt-5 flex gap-2">
-                    @csrf
-                    <input type="hidden" name="item_id" value="{{ $item->id }}">
-                    <input name="quantity" type="number" min="1" step="1" value="1"
-                        class="w-24 rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <button class="flex-1 rounded-lg px-4 py-2 text-sm font-semibold text-white" style="background: {{ $primaryColor }}">
-                        Adicionar
-                    </button>
-                </form>
+                @if ($canUseCustomerActions)
+                    <form method="POST" action="{{ route('public.checkout.cart.add', $tenant->slug) }}" class="mt-5 flex gap-2">
+                        @csrf
+                        <input type="hidden" name="item_id" value="{{ $item->id }}">
+                        <input name="quantity" type="number" min="1" step="1" value="1"
+                            class="w-24 rounded-lg border-gray-300 text-sm shadow-sm focus:border-orange-500 focus:ring-orange-500">
+                        <button class="flex-1 rounded-lg border border-gray-900/10 px-4 py-2 text-sm font-extrabold text-gray-950 shadow-[0_3px_0_#f97316]" style="background: {{ $primaryColor }}">
+                            Adicionar
+                        </button>
+                    </form>
+                @endif
             </article>
         @empty
             <div class="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500 sm:col-span-2 lg:col-span-3">
@@ -120,3 +157,31 @@
         </section>
     @endif
 @endsection
+
+@push('scripts')
+    <script>
+        document.querySelectorAll('[data-product-thumbnail]').forEach((thumbnail) => {
+            thumbnail.addEventListener('click', () => {
+                const productId = thumbnail.dataset.productThumbnail;
+                const mainImage = document.querySelector(`[data-product-main-image="${productId}"]`);
+
+                if (!mainImage) {
+                    return;
+                }
+
+                mainImage.src = thumbnail.dataset.imageSrc;
+                mainImage.alt = thumbnail.dataset.imageAlt;
+
+                document.querySelectorAll(`[data-product-thumbnail="${productId}"]`).forEach((button) => {
+                    const isSelected = button === thumbnail;
+
+                    button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+                    button.classList.toggle('border-orange-500', isSelected);
+                    button.classList.toggle('ring-2', isSelected);
+                    button.classList.toggle('ring-orange-200', isSelected);
+                    button.classList.toggle('border-gray-100', ! isSelected);
+                });
+            });
+        });
+    </script>
+@endpush

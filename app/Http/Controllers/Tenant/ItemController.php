@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Item;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ItemController extends Controller
 {
@@ -65,6 +67,8 @@ class ItemController extends Controller
             'sale_price' => 'required|numeric|min:0',
             'stock_quantity' => 'required|numeric|min:0',
             'min_stock_alert' => 'required|numeric|min:0',
+            'images' => 'nullable|array|max:3',
+            'images.*' => 'image|max:4096',
         ]);
 
         // Garantimos que checkboxes booleanos ausentes no request sejam tratados como false
@@ -76,6 +80,7 @@ class ItemController extends Controller
 
         // Atribui o tenant_id da assistência atual
         $validated['tenant_id'] = Auth::user()->tenant_id;
+        $validated['images'] = $this->storeImages($request, $tenant->id);
 
         Item::create($validated);
 
@@ -124,6 +129,10 @@ class ItemController extends Controller
             'sale_price' => 'sometimes|required|numeric|min:0',
             'stock_quantity' => 'sometimes|required|numeric|min:0',
             'min_stock_alert' => 'sometimes|required|numeric|min:0',
+            'images' => 'nullable|array|max:3',
+            'images.*' => 'image|max:4096',
+            'remove_images' => 'nullable|array',
+            'remove_images.*' => 'string',
         ]);
 
         // Trata o checkbox do form HTML (se não for enviado, é false)
@@ -134,6 +143,8 @@ class ItemController extends Controller
         if (($validated['is_for_sale'] ?? false) && ! $item->is_for_sale) {
             $this->ensurePublicProductAllowed($tenant);
         }
+
+        $validated['images'] = $this->syncImages($request, $item, $tenant->id);
 
         $item->update($validated);
 
@@ -149,6 +160,10 @@ class ItemController extends Controller
     public function destroy($id)
     {
         $item = Item::forTenant(Auth::user()->tenant_id)->findOrFail($id);
+
+        foreach ($item->images ?? [] as $image) {
+            Storage::disk('public')->delete($image);
+        }
 
         $item->delete();
 
@@ -168,5 +183,43 @@ class ItemController extends Controller
         if ($limit !== null && Item::forTenant($tenant->id)->where('is_for_sale', true)->count() >= $limit) {
             abort(403, 'Limite de produtos públicos atingido para o plano atual.');
         }
+    }
+
+    private function storeImages(Request $request, int $tenantId): array
+    {
+        return collect($request->file('images', []))
+            ->map(fn ($image) => $image->store('items/'.$tenantId, 'public'))
+            ->values()
+            ->all();
+    }
+
+    private function syncImages(Request $request, Item $item, int $tenantId): array
+    {
+        $existingImages = collect($item->images ?? []);
+        $imagesToRemove = $existingImages
+            ->intersect($request->input('remove_images', []))
+            ->values();
+
+        foreach ($imagesToRemove as $path) {
+            Storage::disk('public')->delete($path);
+        }
+
+        $remainingImages = $existingImages
+            ->reject(fn (string $path) => $imagesToRemove->contains($path))
+            ->values();
+
+        if (($remainingImages->count() + count($request->file('images', []))) > 3) {
+            throw ValidationException::withMessages([
+                'images' => 'Cada produto pode ter no máximo 3 imagens.',
+            ]);
+        }
+
+        $newImages = $this->storeImages($request, $tenantId);
+
+        return $remainingImages
+            ->merge($newImages)
+            ->take(3)
+            ->values()
+            ->all();
     }
 }

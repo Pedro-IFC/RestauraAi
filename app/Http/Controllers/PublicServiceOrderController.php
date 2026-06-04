@@ -26,6 +26,7 @@ class PublicServiceOrderController extends Controller
         $tenant = $this->publicTenant($slug);
 
         abort_unless($tenant->hasFeature('kanban'), 404);
+        $this->abortForInternalUser($request);
 
         $customer = $this->authenticatedCustomer($tenant);
 
@@ -37,6 +38,7 @@ class PublicServiceOrderController extends Controller
         $tenant = $this->publicTenant($slug);
 
         abort_unless($tenant->hasFeature('kanban'), 404);
+        $this->abortForInternalUser($request);
 
         if ($tenant->hasReachedMonthlyServiceOrderLimit()) {
             return back()
@@ -122,6 +124,13 @@ class PublicServiceOrderController extends Controller
         return Customer::where('tenant_id', $tenant->id)
             ->where('user_id', $user->id)
             ->first();
+    }
+
+    private function abortForInternalUser(Request $request): void
+    {
+        $user = $request->user();
+
+        abort_if($user && ! $user->isCustomer(), 403);
     }
 
     private function resolveCustomer(Tenant $tenant, ?User $user, array $validated, array $customerData): Customer

@@ -155,6 +155,27 @@ class PublicCustomerAccountTest extends TestCase
         ]);
     }
 
+    public function test_customer_with_tenant_id_sees_only_the_public_customer_menu(): void
+    {
+        [$tenant, $customer, $user] = $this->tenantCustomerAndUser('menu-cliente');
+        $user->update(['tenant_id' => $tenant->id]);
+
+        $this->actingAs($user)
+            ->get('/menu-cliente/minha-conta')
+            ->assertOk()
+            ->assertSee('Loja')
+            ->assertSee('Minha conta')
+            ->assertSee('Novo chamado')
+            ->assertSee('Acompanhamento')
+            ->assertSee('Carrinho')
+            ->assertSee('Cliente')
+            ->assertDontSee('Kanban')
+            ->assertDontSee('Estoque')
+            ->assertDontSee('Agenda')
+            ->assertDontSee('Customização')
+            ->assertDontSee('Microssite');
+    }
+
     public function test_checkout_can_attach_delivery_address_to_customer_order(): void
     {
         [$tenant, $customer, $user] = $this->tenantCustomerAndUser('checkout-endereco');
