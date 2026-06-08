@@ -154,6 +154,8 @@ class PublicCheckoutController extends Controller
                     ]);
                 }
 
+                $order->transitionTo(CheckoutOrder::STATE_AWAITING_PAYMENT, auth()->user(), 'Pedido criado pelo checkout do catalogo.');
+
                 return $order;
             });
         } catch (ModelNotFoundException) {
@@ -213,6 +215,8 @@ class PublicCheckoutController extends Controller
                 'total_price' => $split['total'],
             ]);
 
+            $order->transitionTo(CheckoutOrder::STATE_AWAITING_PAYMENT, auth()->user(), 'Pedido de pagamento de orcamento criado pelo cliente.');
+
             return $order;
         });
 
@@ -239,10 +243,7 @@ class PublicCheckoutController extends Controller
         abort_unless($order->tenant_id === $tenant->id, 404);
         abort_unless($order->canBeCanceled(), 409);
 
-        $order->update([
-            'status' => CheckoutOrder::STATUS_CANCELED,
-            'canceled_at' => now(),
-        ]);
+        $order->transitionTo(CheckoutOrder::STATE_CANCELED, $request->user(), 'Cancelado pelo cliente no portal.');
 
         return redirect()
             ->route('public.checkout.order.show', [$tenant->slug, $order])

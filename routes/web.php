@@ -17,6 +17,7 @@ use App\Http\Controllers\Tenant\TimeTrackingController;
 use App\Http\Controllers\Tenant\ItemController;
 use App\Http\Controllers\Tenant\ScheduleController;
 use App\Http\Controllers\Tenant\CustomizationController;
+use App\Http\Controllers\Tenant\CheckoutOrderController;
 
 use App\Http\Controllers\Admin\PlanController;
 use App\Http\Controllers\Admin\TenantManagementController;
@@ -55,6 +56,10 @@ Route::group(['prefix' => 'painel', 'middleware' => ['auth', 'tenant_context']],
     // RF-08: Gestão de Insumos e Produtos[cite: 24].
     // CRUD completo para itens, definição de uso interno ou flag de venda pública[cite: 25, 26, 27].
     Route::resource('/estoque', ItemController::class)->middleware('feature:inventory');
+
+    Route::get('/pedidos', [CheckoutOrderController::class, 'index'])->middleware('feature:catalog')->name('tenant.checkout-orders.index');
+    Route::get('/pedidos/{order}', [CheckoutOrderController::class, 'show'])->middleware('feature:catalog')->name('tenant.checkout-orders.show');
+    Route::patch('/pedidos/{order}/status', [CheckoutOrderController::class, 'updateStatus'])->middleware('feature:catalog')->name('tenant.checkout-orders.status');
 
     // RF-09: Agenda e Cronograma de entregas[cite: 30].
     Route::get('/agenda', [ScheduleController::class, 'index'])->middleware('feature:schedule')->name('tenant.schedule.index');

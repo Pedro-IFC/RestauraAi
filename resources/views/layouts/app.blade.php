@@ -117,6 +117,10 @@
                 $tenantMenuItems[] = ['label' => 'Estoque', 'route' => 'estoque.index', 'active' => request()->routeIs('estoque.*')];
             }
 
+            if ($tenant->hasFeature('catalog')) {
+                $tenantMenuItems[] = ['label' => 'Pedidos', 'route' => 'tenant.checkout-orders.index', 'active' => request()->routeIs('tenant.checkout-orders.*')];
+            }
+
             if ($tenant->hasFeature('schedule')) {
                 $tenantMenuItems[] = ['label' => 'Agenda', 'route' => 'tenant.schedule.index', 'active' => request()->routeIs('tenant.schedule.*')];
             }
@@ -139,7 +143,7 @@
     @endphp
 
     <div class="min-h-screen flex flex-col">
-        @if($isTenantUser || ($currentUser && $currentUser->role == 'superadmin'))
+        @if($isTenantUser || $isCustomerUser || ($currentUser && $currentUser->role == 'superadmin'))
             <nav class="sticky top-0 z-50 border-b border-yellow-200 bg-white shadow-sm">
                 <div class="brand-stripe-bar"></div>
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

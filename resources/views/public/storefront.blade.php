@@ -67,6 +67,12 @@
                 </div>
             </div>
 
+            @if ($viewer && ! $canUseCustomerActions)
+                <div class="mt-5 rounded-lg bg-white/70 p-4 text-sm font-semibold text-gray-700">
+                    Você está visualizando o microssite como usuário interno.
+                </div>
+            @endif
+
             @if ($customization?->about_text)
                 <div class="mt-5 max-w-4xl whitespace-pre-line text-gray-700">{{ $customization->about_text }}</div>
             @endif
