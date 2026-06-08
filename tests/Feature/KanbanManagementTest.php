@@ -108,6 +108,42 @@ class KanbanManagementTest extends TestCase
         ]);
     }
 
+    public function test_service_order_created_with_received_hardware_advances_to_next_stage(): void
+    {
+        [$tenant, $user] = $this->tenantAndUser();
+        $customer = Customer::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Cliente',
+            'cpf' => '654',
+        ]);
+        $triage = KanbanColumn::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Triagem',
+            'order_index' => 1,
+        ]);
+        $budget = KanbanColumn::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Orçamento',
+            'order_index' => 2,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('ordens-servico.store'), [
+                'customer_id' => $customer->id,
+                'kanban_column_id' => $triage->id,
+                'device_model' => 'MacBook Pro',
+                'defect_symptoms' => 'Sem video',
+                'hardware_received_at' => now()->format('Y-m-d H:i:s'),
+            ])
+            ->assertRedirect();
+
+        $serviceOrder = ServiceOrder::firstWhere('device_model', 'MacBook Pro');
+
+        $this->assertSame($budget->id, $serviceOrder->kanban_column_id);
+        $this->assertSame('budgeting', $serviceOrder->status);
+        $this->assertNotNull($serviceOrder->hardware_received_at);
+    }
+
     private function tenantAndUser(): array
     {
         $plan = Plan::create([

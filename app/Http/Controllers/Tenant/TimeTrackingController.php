@@ -64,4 +64,40 @@ class TimeTrackingController extends Controller
             ->back()
             ->with('success', 'Cronômetro pausado.');
     }
+
+    public function storeManual(Request $request, $id)
+    {
+        $serviceOrder = ServiceOrder::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
+
+        $validated = $request->validate([
+            'started_at' => 'required|date',
+            'hours' => 'nullable|integer|min:0|max:999',
+            'minutes' => 'nullable|integer|min:0|max:59',
+        ]);
+
+        $hours = (int) ($validated['hours'] ?? 0);
+        $minutes = (int) ($validated['minutes'] ?? 0);
+        $durationSeconds = ($hours * 3600) + ($minutes * 60);
+
+        if ($durationSeconds <= 0) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors(['duration' => 'Informe uma duração maior que zero.']);
+        }
+
+        $startedAt = \Illuminate\Support\Carbon::parse($validated['started_at']);
+
+        TimeEntry::create([
+            'service_order_id' => $serviceOrder->id,
+            'user_id' => Auth::id(),
+            'started_at' => $startedAt,
+            'ended_at' => $startedAt->copy()->addSeconds($durationSeconds),
+            'duration_seconds' => $durationSeconds,
+        ]);
+
+        return redirect()
+            ->back()
+            ->with('success', 'Tempo manual adicionado.');
+    }
 }

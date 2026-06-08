@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Item;
 use App\Models\KanbanColumn;
 use App\Models\ServiceOrder;
+use App\Services\ServiceOrderWorkflow;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -64,8 +65,19 @@ class ServiceOrderController extends Controller
                 'required',
                 Rule::exists('kanban_columns', 'id')->where('tenant_id', Auth::user()->tenant_id),
             ],
-            'deadline_at' => 'nullable|date|after:today',
+            'planned_start_at' => 'nullable|date',
+            'deadline_at' => 'nullable|date',
+            'hardware_received_at' => 'nullable|date',
+            'hardware_received_notes' => 'nullable|string|max:1000',
+            'schedule_notes' => 'nullable|string|max:1000',
+            'next_kanban_column_id' => [
+                'nullable',
+                Rule::exists('kanban_columns', 'id')->where('tenant_id', Auth::user()->tenant_id),
+            ],
         ]);
+
+        $nextKanbanColumnId = $validated['next_kanban_column_id'] ?? null;
+        unset($validated['next_kanban_column_id']);
 
         // O tenant_id pode ser definido automaticamente no observer ou aqui via auth()
         $serviceOrder = ServiceOrder::create(array_merge($validated, [
@@ -77,6 +89,10 @@ class ServiceOrderController extends Controller
             'total_cost' => 0.00,
             'total_price' => 0.00,
         ]));
+
+        if ($serviceOrder->hardware_received_at) {
+            app(ServiceOrderWorkflow::class)->advanceAfterHardwareReceipt($serviceOrder, $nextKanbanColumnId);
+        }
 
         return redirect()
             ->route('ordens-servico.show', $serviceOrder->id)
@@ -100,8 +116,11 @@ class ServiceOrderController extends Controller
                 ->orderBy('name')
                 ->get()
             : collect();
+        $kanbanColumns = KanbanColumn::where('tenant_id', Auth::user()->tenant_id)
+            ->orderBy('order_index')
+            ->get();
 
-        return view('tenant.service_orders.show', compact('serviceOrder', 'availableItems'));
+        return view('tenant.service_orders.show', compact('serviceOrder', 'availableItems', 'kanbanColumns'));
     }
 
     /**
@@ -129,10 +148,29 @@ class ServiceOrderController extends Controller
             'defect_symptoms' => 'sometimes|required|string',
             'status' => 'sometimes|required|in:pending,budgeting,approved,rejected,finished',
             'total_price' => 'sometimes|numeric|min:0',
+            'planned_start_at' => 'nullable|date',
             'deadline_at' => 'nullable|date',
+            'hardware_received_at' => 'nullable|date',
+            'hardware_received_notes' => 'nullable|string|max:1000',
+            'schedule_notes' => 'nullable|string|max:1000',
+            'next_kanban_column_id' => [
+                'nullable',
+                Rule::exists('kanban_columns', 'id')->where('tenant_id', Auth::user()->tenant_id),
+            ],
         ]);
 
+        $nextKanbanColumnId = $validated['next_kanban_column_id'] ?? null;
+        unset($validated['next_kanban_column_id']);
+
+        $wasHardwareReceived = (bool) $serviceOrder->hardware_received_at;
         $serviceOrder->update($validated);
+
+        if (! $wasHardwareReceived && $serviceOrder->fresh()->hardware_received_at) {
+            app(ServiceOrderWorkflow::class)->advanceAfterHardwareReceipt(
+                $serviceOrder,
+                $nextKanbanColumnId
+            );
+        }
 
         return redirect()
             ->route('ordens-servico.show', $serviceOrder->id)

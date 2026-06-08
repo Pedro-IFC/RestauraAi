@@ -24,14 +24,17 @@ class ServiceOrder extends Model
         'total_price',
         'budget_decided_at',
         'kanban_position',
+        'planned_start_at',
         'deadline_at',
         'hardware_received_at',
         'hardware_received_notes',
+        'schedule_notes',
     ];
 
     protected $casts = [
         'attachments' => 'array',
         'budget_decided_at' => 'datetime',
+        'planned_start_at' => 'datetime',
         'deadline_at' => 'datetime',
         'hardware_received_at' => 'datetime',
         'total_cost' => 'decimal:2',
@@ -66,6 +69,11 @@ class ServiceOrder extends Model
     public function timeEntries(): HasMany
     {
         return $this->hasMany(TimeEntry::class);
+    }
+
+    public function scheduleEvents(): HasMany
+    {
+        return $this->hasMany(ScheduleEvent::class);
     }
 
     public function runningTimeEntries(): HasMany

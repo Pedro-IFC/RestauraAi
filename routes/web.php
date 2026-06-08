@@ -52,6 +52,7 @@ Route::group(['prefix' => 'painel', 'middleware' => ['auth', 'tenant_context']],
     // RF-07: Time Tracking (Play/Pause no cronômetro do técnico)[cite: 23].
     Route::post('/ordens-servico/{id}/time-tracking/start', [TimeTrackingController::class, 'start'])->middleware('feature:time_tracking')->name('tenant.tracking.start');
     Route::post('/ordens-servico/{id}/time-tracking/stop', [TimeTrackingController::class, 'stop'])->middleware('feature:time_tracking')->name('tenant.tracking.stop');
+    Route::post('/ordens-servico/{id}/time-tracking/manual', [TimeTrackingController::class, 'storeManual'])->middleware('feature:time_tracking')->name('tenant.tracking.manual');
 
     // RF-08: Gestão de Insumos e Produtos[cite: 24].
     // CRUD completo para itens, definição de uso interno ou flag de venda pública[cite: 25, 26, 27].
@@ -64,6 +65,9 @@ Route::group(['prefix' => 'painel', 'middleware' => ['auth', 'tenant_context']],
     // RF-09: Agenda e Cronograma de entregas[cite: 30].
     Route::get('/agenda', [ScheduleController::class, 'index'])->middleware('feature:schedule')->name('tenant.schedule.index');
     Route::patch('/agenda/ordens-servico/{id}', [ScheduleController::class, 'updateServiceOrderSchedule'])->middleware('feature:schedule')->name('tenant.schedule.service_orders.update');
+    Route::post('/agenda/eventos', [ScheduleController::class, 'storeEvent'])->middleware('feature:schedule')->name('tenant.schedule.events.store');
+    Route::patch('/agenda/eventos/{event}', [ScheduleController::class, 'updateEvent'])->middleware('feature:schedule')->name('tenant.schedule.events.update');
+    Route::delete('/agenda/eventos/{event}', [ScheduleController::class, 'destroyEvent'])->middleware('feature:schedule')->name('tenant.schedule.events.destroy');
 
     // RF-13: Painel de Customização de Layout do microssite[cite: 32].
     Route::get('/customizacao', [CustomizationController::class, 'edit'])->middleware('feature:customization_basic')->name('tenant.customization.edit');

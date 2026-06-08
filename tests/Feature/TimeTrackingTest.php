@@ -74,6 +74,60 @@ class TimeTrackingTest extends TestCase
         $this->assertDatabaseCount('time_entries', 0);
     }
 
+    public function test_technician_can_add_manual_time_to_service_order(): void
+    {
+        [, $user, $serviceOrder] = $this->serviceOrderFixture();
+        $startedAt = now()->setTime(8, 30);
+
+        $this->actingAs($user)
+            ->post(route('tenant.tracking.manual', $serviceOrder), [
+                'started_at' => $startedAt->format('Y-m-d H:i:s'),
+                'hours' => 1,
+                'minutes' => 25,
+            ])
+            ->assertRedirect();
+
+        $entry = TimeEntry::where('service_order_id', $serviceOrder->id)->firstOrFail();
+
+        $this->assertSame($user->id, $entry->user_id);
+        $this->assertSame($startedAt->format('Y-m-d H:i'), $entry->started_at->format('Y-m-d H:i'));
+        $this->assertSame($startedAt->copy()->addMinutes(85)->format('Y-m-d H:i'), $entry->ended_at->format('Y-m-d H:i'));
+        $this->assertSame(5100, $entry->duration_seconds);
+        $this->assertSame(5100, $serviceOrder->fresh()->trackedSeconds());
+    }
+
+    public function test_manual_time_requires_positive_duration(): void
+    {
+        [, $user, $serviceOrder] = $this->serviceOrderFixture();
+
+        $this->actingAs($user)
+            ->from(route('ordens-servico.show', $serviceOrder))
+            ->post(route('tenant.tracking.manual', $serviceOrder), [
+                'started_at' => now()->format('Y-m-d H:i:s'),
+                'hours' => 0,
+                'minutes' => 0,
+            ])
+            ->assertRedirect(route('ordens-servico.show', $serviceOrder))
+            ->assertSessionHasErrors('duration');
+
+        $this->assertDatabaseCount('time_entries', 0);
+    }
+
+    public function test_manual_time_is_scoped_to_authenticated_tenant(): void
+    {
+        [, , $serviceOrder] = $this->serviceOrderFixture();
+        [, $otherUser] = $this->tenantAndUser('manual-outra-assistencia', 'manual-other@example.com');
+
+        $this->actingAs($otherUser)
+            ->post(route('tenant.tracking.manual', $serviceOrder), [
+                'started_at' => now()->format('Y-m-d H:i:s'),
+                'hours' => 1,
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('time_entries', 0);
+    }
+
     private function serviceOrderFixture(): array
     {
         [$tenant, $user] = $this->tenantAndUser('assistencia-teste', 'tecnico-time@example.com');

@@ -59,6 +59,11 @@ class Tenant extends Model
         return $this->hasMany(Item::class);
     }
 
+    public function scheduleEvents(): HasMany
+    {
+        return $this->hasMany(ScheduleEvent::class);
+    }
+
     public function hasFeature(string $feature): bool
     {
         return (bool) $this->plan?->hasFeature($feature);

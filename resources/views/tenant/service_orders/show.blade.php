@@ -56,7 +56,17 @@
         </div>
     </div>
 
-    <div class="mt-6 grid gap-4 md:grid-cols-2">
+    <div class="mt-6 grid gap-4 md:grid-cols-3">
+        <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Início planejado</div>
+            <div class="mt-2 text-lg font-bold text-gray-900">
+                {{ $serviceOrder->planned_start_at?->format('d/m/Y H:i') ?? 'Sem início definido' }}
+            </div>
+            @if ($serviceOrder->schedule_notes)
+                <p class="mt-1 text-sm text-gray-600">{{ $serviceOrder->schedule_notes }}</p>
+            @endif
+        </section>
+
         <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Prazo prometido</div>
             <div class="mt-2 text-lg font-bold {{ $serviceOrder->isDeadlineOverdue() ? 'text-red-700' : 'text-gray-900' }}">
@@ -104,9 +114,43 @@
                         <option value="finished" @selected($serviceOrder->status === 'finished')>Finalizado</option>
                     </select>
                 </div>
+                <div>
+                    <label for="planned_start_at" class="block text-sm font-medium text-gray-700">Início planejado</label>
+                    <input id="planned_start_at" name="planned_start_at" type="datetime-local" value="{{ old('planned_start_at', $serviceOrder->planned_start_at?->format('Y-m-d\TH:i')) }}"
+                        class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="deadline_at" class="block text-sm font-medium text-gray-700">Prazo prometido</label>
+                    <input id="deadline_at" name="deadline_at" type="datetime-local" value="{{ old('deadline_at', $serviceOrder->deadline_at?->format('Y-m-d\TH:i')) }}"
+                        class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="hardware_received_at" class="block text-sm font-medium text-gray-700">Recebimento do hardware</label>
+                    <input id="hardware_received_at" name="hardware_received_at" type="datetime-local" value="{{ old('hardware_received_at', $serviceOrder->hardware_received_at?->format('Y-m-d\TH:i')) }}"
+                        class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="next_kanban_column_id" class="block text-sm font-medium text-gray-700">Encaminhar após recebimento</label>
+                    <select id="next_kanban_column_id" name="next_kanban_column_id" class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">Próxima etapa do Kanban</option>
+                        @foreach ($kanbanColumns as $column)
+                            <option value="{{ $column->id }}" @selected((string) old('next_kanban_column_id') === (string) $column->id)>{{ $column->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="hardware_received_notes" class="block text-sm font-medium text-gray-700">Observações do recebimento</label>
+                    <input id="hardware_received_notes" name="hardware_received_notes" value="{{ old('hardware_received_notes', $serviceOrder->hardware_received_notes) }}"
+                        class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="schedule_notes" class="block text-sm font-medium text-gray-700">Notas de planejamento</label>
+                    <textarea id="schedule_notes" name="schedule_notes" rows="3"
+                        class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ old('schedule_notes', $serviceOrder->schedule_notes) }}</textarea>
+                </div>
                 <div class="md:col-span-2">
                     <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                        Atualizar orçamento
+                        Atualizar OS
                     </button>
                 </div>
             </form>
@@ -193,6 +237,29 @@
     @if (auth()->user()->tenant?->hasFeature('time_tracking'))
     <section class="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 class="font-semibold text-gray-900">Auditoria de tempo</h2>
+
+        <form method="POST" action="{{ route('tenant.tracking.manual', $serviceOrder) }}" class="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-[1fr_120px_120px_auto] md:items-end">
+            @csrf
+            <div>
+                <label for="manual_started_at" class="block text-sm font-medium text-gray-700">Início do trabalho</label>
+                <input id="manual_started_at" name="started_at" type="datetime-local" value="{{ old('started_at', now()->format('Y-m-d\TH:i')) }}" required
+                    class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="manual_hours" class="block text-sm font-medium text-gray-700">Horas</label>
+                <input id="manual_hours" name="hours" type="number" min="0" max="999" value="{{ old('hours', 0) }}"
+                    class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="manual_minutes" class="block text-sm font-medium text-gray-700">Minutos</label>
+                <input id="manual_minutes" name="minutes" type="number" min="0" max="59" value="{{ old('minutes', 30) }}"
+                    class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+            <button class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+                Adicionar tempo
+            </button>
+        </form>
+
         <div class="mt-4 overflow-hidden rounded-lg border border-gray-200">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
