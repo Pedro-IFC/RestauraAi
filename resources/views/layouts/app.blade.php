@@ -11,16 +11,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
-            --brand-yellow: #facc15;
-            --brand-yellow-strong: #f5b400;
-            --brand-orange: #f97316;
-            --brand-ink: #111827;
-            --brand-stripe: repeating-linear-gradient(135deg, #111827 0 10px, #ffffff 10px 20px);
+            --brand-base: #f8fafc;
+            --brand-surface: #ffffff;
+            --brand-border: #e2e8f0;
+            --brand-muted: #64748b;
+            --brand-ink: #0f172a;
+            --brand-secondary: #fef3c7;
+            --brand-secondary-strong: #fde68a;
+            --brand-accent: #f97316;
+            --brand-accent-strong: #ea580c;
+            --brand-stripe: repeating-linear-gradient(135deg, #0f172a 0 10px, #ffffff 10px 20px);
         }
 
         .brand-wordmark {
             color: var(--brand-ink);
-            letter-spacing: -0.03em;
+            letter-spacing: 0;
         }
 
         .brand-wordmark::before {
@@ -34,50 +39,62 @@
             border-radius: 0.45rem 0.45rem 0.7rem 0.7rem;
             background:
                 linear-gradient(90deg, transparent 0 33%, #ffffff 33% 42%, transparent 42% 58%, #ffffff 58% 67%, transparent 67%),
-                var(--brand-yellow);
-            box-shadow: 0 0.35rem 0 var(--brand-orange);
+                var(--brand-secondary-strong);
+            box-shadow: 0 0.28rem 0 var(--brand-accent);
         }
 
         .brand-stripe-bar {
-            height: 0.35rem;
-            background: var(--brand-stripe);
+            height: 0.2rem;
+            background: linear-gradient(90deg, var(--brand-ink) 0 60%, var(--brand-secondary-strong) 60% 90%, var(--brand-accent) 90% 100%);
         }
 
         .brand-primary-button {
-            background: var(--brand-yellow);
-            color: var(--brand-ink);
-            border: 1px solid rgba(17, 24, 39, 0.16);
-            box-shadow: 0 0.25rem 0 var(--brand-orange);
+            background: var(--brand-accent);
+            color: #ffffff;
+            border: 1px solid rgba(234, 88, 12, 0.28);
+            box-shadow: 0 0.18rem 0 var(--brand-accent-strong);
         }
 
         .brand-primary-button:hover {
-            background: var(--brand-yellow-strong);
+            background: var(--brand-accent-strong);
         }
 
         .brand-link:hover {
-            color: var(--brand-orange);
+            color: var(--brand-accent);
+        }
+
+        .brand-shell {
+            background:
+                linear-gradient(180deg, rgba(254, 243, 199, 0.72), rgba(248, 250, 252, 0.96) 18rem),
+                var(--brand-base);
+        }
+
+        .brand-nav {
+            border-color: var(--brand-border);
+            background: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(14px);
         }
 
         .text-blue-600,
         .text-blue-700,
         .hover\:text-blue-600:hover,
         .hover\:text-blue-700:hover {
-            color: var(--brand-orange) !important;
+            color: var(--brand-accent) !important;
         }
 
         .bg-blue-50 {
-            background-color: #fffbeb !important;
+            background-color: var(--brand-secondary) !important;
         }
 
         .bg-blue-100 {
-            background-color: #fef3c7 !important;
+            background-color: var(--brand-secondary-strong) !important;
         }
 
         .bg-blue-600,
         .hover\:bg-blue-700:hover,
         .hover\:bg-blue-500:hover {
-            background-color: var(--brand-yellow) !important;
-            color: var(--brand-ink) !important;
+            background-color: var(--brand-accent) !important;
+            color: #ffffff !important;
         }
 
         .border-blue-100,
@@ -85,17 +102,17 @@
         .border-blue-300,
         .hover\:border-blue-300:hover,
         .hover\:border-blue-500:hover {
-            border-color: #fde68a !important;
+            border-color: var(--brand-secondary-strong) !important;
         }
 
         .focus\:border-blue-500:focus {
-            border-color: var(--brand-orange) !important;
+            border-color: var(--brand-accent) !important;
         }
     </style>
 
     @stack('styles')
 </head>
-<body class="bg-yellow-50/40 font-sans antialiased text-gray-900">
+<body class="brand-shell font-sans antialiased text-gray-900">
     @php
         $currentUser = auth()->user();
         $tenant = $currentUser?->tenant;
@@ -144,7 +161,7 @@
 
     <div class="min-h-screen flex flex-col">
         @if($isTenantUser || $isCustomerUser || ($currentUser && $currentUser->role == 'superadmin'))
-            <nav class="sticky top-0 z-50 border-b border-yellow-200 bg-white shadow-sm">
+            <nav class="brand-nav sticky top-0 z-50 border-b shadow-sm">
                 <div class="brand-stripe-bar"></div>
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex justify-between h-16">
@@ -159,19 +176,19 @@
                             @if ($isTenantUser)
                                 @foreach ($tenantMenuItems as $item)
                                     <a href="{{ route($item['route']) }}"
-                                        class="text-sm font-semibold transition {{ $item['active'] ? 'text-orange-600' : 'brand-link text-gray-600' }}">
+                                        class="text-sm font-semibold transition {{ $item['active'] ? 'text-orange-600' : 'brand-link text-slate-600' }}">
                                         {{ $item['label'] }}
                                     </a>
                                 @endforeach
                                 @if ($tenant?->slug)
-                                    <a href="{{ url('/'.$tenant->slug) }}" class="brand-link text-sm font-semibold text-gray-600 transition">
+                                    <a href="{{ url('/'.$tenant->slug) }}" class="brand-link text-sm font-semibold text-slate-600 transition">
                                         Microssite
                                     </a>
                                 @endif
                             @elseif ($isCustomerUser)
                                 @foreach ($customerMenuItems as $item)
                                     <a href="{{ route($item['route'], $publicSlug) }}"
-                                        class="text-sm font-semibold transition {{ $item['active'] ? 'text-orange-600' : 'brand-link text-gray-600' }}">
+                                        class="text-sm font-semibold transition {{ $item['active'] ? 'text-orange-600' : 'brand-link text-slate-600' }}">
                                         {{ $item['label'] }}
                                     </a>
                                 @endforeach
@@ -186,7 +203,7 @@
                                 </div>
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf
-                                    <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
+                                    <button class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
                                         Sair
                                     </button>
                                 </form>
@@ -197,7 +214,7 @@
                                 </div>
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf
-                                    <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
+                                    <button class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
                                         Sair
                                     </button>
                                 </form>
@@ -214,12 +231,12 @@
                         <div class="flex gap-2 overflow-x-auto border-t border-gray-100 py-3 md:hidden">
                             @foreach ($tenantMenuItems as $item)
                                 <a href="{{ route($item['route']) }}"
-                                    class="shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold {{ $item['active'] ? 'bg-yellow-400 text-gray-950' : 'bg-gray-100 text-gray-700' }}">
+                                    class="shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold {{ $item['active'] ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-700' }}">
                                     {{ $item['label'] }}
                                 </a>
                             @endforeach
                             @if ($tenant?->slug)
-                                <a href="{{ url('/'.$tenant->slug) }}" class="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-sm font-semibold text-gray-700">
+                                <a href="{{ url('/'.$tenant->slug) }}" class="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">
                                     Microssite
                                 </a>
                             @endif
@@ -230,7 +247,7 @@
                         <div class="flex gap-2 overflow-x-auto border-t border-gray-100 py-3 md:hidden">
                             @foreach ($customerMenuItems as $item)
                                 <a href="{{ route($item['route'], $publicSlug) }}"
-                                    class="shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold {{ $item['active'] ? 'bg-yellow-400 text-gray-950' : 'bg-gray-100 text-gray-700' }}">
+                                    class="shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold {{ $item['active'] ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-700' }}">
                                     {{ $item['label'] }}
                                 </a>
                             @endforeach
@@ -274,7 +291,7 @@
             </div>
         </main>
 
-        <footer class="mt-auto border-t border-yellow-200 bg-white">
+        <footer class="mt-auto border-t border-slate-200 bg-white/90">
             <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
                 <p class="text-sm text-gray-500">
                     &copy; {{ date('Y') }} RestauraAí. Todos os direitos reservados.

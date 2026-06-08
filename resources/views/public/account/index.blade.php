@@ -71,6 +71,40 @@
 
         <div class="space-y-6">
             <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h2 class="font-semibold text-gray-900">Minhas Assistências</h2>
+                        <p class="mt-1 text-sm text-gray-600">Histórico global do seu usuário na FixGo, separado por assistência.</p>
+                    </div>
+                    <span class="text-sm text-gray-500">{{ $allAssistances->count() }} vínculo(s)</span>
+                </div>
+
+                <div class="mt-4 grid gap-3 md:grid-cols-2">
+                    @forelse ($allAssistances as $linkedCustomer)
+                        <article class="rounded-lg border {{ $linkedCustomer->tenant_id === $tenant->id ? 'border-orange-300 bg-orange-50/40' : 'border-gray-200 bg-white' }} p-4">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <h3 class="font-semibold text-gray-900">{{ $linkedCustomer->tenant?->name ?? 'Assistência indisponível' }}</h3>
+                                    <p class="mt-1 text-sm text-gray-600">
+                                        {{ $linkedCustomer->serviceOrders->count() }} OS(s) · {{ $linkedCustomer->checkoutOrders->count() }} pedido(s)
+                                    </p>
+                                </div>
+                                @if ($linkedCustomer->tenant)
+                                    <a href="{{ route('public.account.index', $linkedCustomer->tenant->slug) }}" class="text-sm font-semibold text-blue-600 hover:text-blue-700">
+                                        {{ $linkedCustomer->tenant_id === $tenant->id ? 'Atual' : 'Ver' }}
+                                    </a>
+                                @endif
+                            </div>
+                        </article>
+                    @empty
+                        <div class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 md:col-span-2">
+                            Nenhum vínculo com assistência encontrado.
+                        </div>
+                    @endforelse
+                </div>
+            </section>
+
+            <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                 <div class="flex items-center justify-between gap-4">
                     <h2 class="font-semibold text-gray-900">Central de Ordens de Serviço</h2>
                     <span class="text-sm text-gray-500">{{ $serviceOrders->count() }} ordem(ns)</span>

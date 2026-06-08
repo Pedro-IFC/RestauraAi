@@ -47,6 +47,11 @@ class User extends Authenticatable
         return $this->hasMany(CustomerAddress::class);
     }
 
+    public function checkoutCarts(): HasMany
+    {
+        return $this->hasMany(CheckoutCart::class);
+    }
+
     public function isCustomer(): bool
     {
         return $this->role === 'customer';

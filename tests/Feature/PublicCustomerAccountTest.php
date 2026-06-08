@@ -70,7 +70,37 @@ class PublicCustomerAccountTest extends TestCase
             ->assertSee('Carregador USB-C')
             ->assertSee('Entrega - Saiu para entrega')
             ->assertSee('Rua das Flores')
+            ->assertSee('Minhas Assistências')
+            ->assertSee($tenant->name)
+            ->assertSee($otherTenant->name)
             ->assertDontSee('Notebook de outra loja');
+    }
+
+    public function test_authenticated_customer_can_switch_tenant_context_without_new_login(): void
+    {
+        [$tenant, $customer, $user] = $this->tenantCustomerAndUser('contexto-ph');
+        [$otherTenant, $otherCustomer] = $this->tenantCustomerAndUser('contexto-consoles', $user);
+
+        $this->serviceOrder($tenant, $customer, 'Notebook PH', 'Triagem');
+        $this->serviceOrder($otherTenant, $otherCustomer, 'Console Switch', 'Triagem');
+
+        $this->actingAs($user)
+            ->get('/contexto-ph/minha-conta')
+            ->assertOk()
+            ->assertSee('Notebook PH')
+            ->assertDontSee('Console Switch')
+            ->assertSessionHas('public_tenant_slug', 'contexto-ph');
+
+        $this->assertAuthenticatedAs($user);
+
+        $this->actingAs($user)
+            ->get('/contexto-consoles/minha-conta')
+            ->assertOk()
+            ->assertSee('Console Switch')
+            ->assertDontSee('Notebook PH')
+            ->assertSessionHas('public_tenant_slug', 'contexto-consoles');
+
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_guest_is_redirected_to_public_login_for_account(): void
@@ -164,6 +194,8 @@ class PublicCustomerAccountTest extends TestCase
             ->get('/menu-cliente/minha-conta')
             ->assertOk()
             ->assertSee('Loja')
+            ->assertSee('href="'.route('public.store.index', $tenant->slug).'"', false)
+            ->assertDontSee('/?'.$tenant->slug)
             ->assertSee('Minha conta')
             ->assertSee('Novo chamado')
             ->assertSee('Acompanhamento')

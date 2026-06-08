@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CheckoutOrder;
+use App\Models\CheckoutCart;
 use App\Models\Customer;
 use App\Models\Item;
 use App\Models\KanbanColumn;
@@ -140,6 +141,70 @@ class PublicCheckoutSplitTest extends TestCase
         $this->assertSame('Orçamento aprovado - OS #'.$serviceOrder->id, $order->items->first()->description);
     }
 
+    public function test_authenticated_customer_has_isolated_persistent_carts_per_tenant(): void
+    {
+        $tenant = $this->tenant('carrinho-ph');
+        $otherTenant = $this->tenant('carrinho-consoles');
+        $mouse = $this->item($tenant, 'Mouse PH', 5, 80);
+        $joystick = $this->item($otherTenant, 'Controle Console', 4, 220);
+        [$user] = $this->customer($tenant, 'carrinhos@example.com');
+        $this->customer($otherTenant, 'carrinhos@example.com', $user);
+
+        $this->actingAs($user)
+            ->post('/carrinho-ph/checkout/carrinho', [
+                'item_id' => $mouse->id,
+                'quantity' => 2,
+            ])
+            ->assertRedirect(route('public.checkout.cart', $tenant->slug));
+
+        $this->actingAs($user)
+            ->post('/carrinho-consoles/checkout/carrinho', [
+                'item_id' => $joystick->id,
+                'quantity' => 1,
+            ])
+            ->assertRedirect(route('public.checkout.cart', $otherTenant->slug));
+
+        $this->assertSame(2, CheckoutCart::where('user_id', $user->id)->count());
+
+        $this->actingAs($user)
+            ->get('/carrinho-ph/checkout')
+            ->assertOk()
+            ->assertSee('Mouse PH')
+            ->assertDontSee('Controle Console');
+
+        $this->actingAs($user)
+            ->get('/carrinho-consoles/checkout')
+            ->assertOk()
+            ->assertSee('Controle Console')
+            ->assertDontSee('Mouse PH');
+
+        $this->actingAs($user)
+            ->post('/carrinho-consoles/checkout', [
+                'payment_method' => 'pix',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(1, CheckoutCart::where('user_id', $user->id)->where('tenant_id', $tenant->id)->firstOrFail()->items()->count());
+        $this->assertSame(0, CheckoutCart::where('user_id', $user->id)->where('tenant_id', $otherTenant->id)->firstOrFail()->items()->count());
+    }
+
+    public function test_checkout_cart_rejects_product_from_another_tenant(): void
+    {
+        $tenant = $this->tenant('carrinho-certo');
+        $otherTenant = $this->tenant('carrinho-errado');
+        $foreignItem = $this->item($otherTenant, 'Produto de outro CNPJ', 3, 99);
+        [$user] = $this->customer($tenant, 'seguranca-carrinho@example.com');
+
+        $this->actingAs($user)
+            ->post('/carrinho-certo/checkout/carrinho', [
+                'item_id' => $foreignItem->id,
+                'quantity' => 1,
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('checkout_cart_items', 0);
+    }
+
     private function tenant(string $slug): Tenant
     {
         $plan = Plan::create([
@@ -172,9 +237,9 @@ class PublicCheckoutSplitTest extends TestCase
         ]);
     }
 
-    private function customer(Tenant $tenant, string $email): array
+    private function customer(Tenant $tenant, string $email, ?User $user = null): array
     {
-        $user = User::create([
+        $user ??= User::create([
             'name' => 'Cliente Checkout',
             'email' => $email,
             'password' => Hash::make('password123'),

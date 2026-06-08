@@ -24,7 +24,7 @@ use App\Http\Controllers\Admin\TenantManagementController;
 use App\Http\Controllers\Admin\SubscriptionController;
 use App\Http\Controllers\Admin\ConsumerPrivacyController;
 
-Route::get('/', [WebsiteController::class, 'index'])->name('public.store.index');
+Route::get('/', [WebsiteController::class, 'index'])->name('public.home');
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');

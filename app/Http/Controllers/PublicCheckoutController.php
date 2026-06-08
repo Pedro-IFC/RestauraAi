@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CheckoutOrder;
+use App\Models\CheckoutCart;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
 use App\Models\Item;
@@ -19,6 +20,7 @@ class PublicCheckoutController extends Controller
     public function cart(Request $request, $slug)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
         abort_unless($tenant->hasFeature('catalog'), 404);
 
         $cartItems = $this->cartItems($request, $tenant);
@@ -43,6 +45,7 @@ class PublicCheckoutController extends Controller
     public function addProduct(Request $request, $slug)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
         abort_unless($tenant->hasFeature('catalog'), 404);
 
         $validated = $request->validate([
@@ -60,22 +63,14 @@ class PublicCheckoutController extends Controller
             return back()->withErrors(['quantity' => 'Quantidade indisponível no estoque.']);
         }
 
-        $cart = $request->session()->get($this->cartSessionKey($tenant), []);
-        $currentQuantity = (float) ($cart[$item->id]['quantity'] ?? 0);
+        $currentQuantity = $this->currentCartQuantity($request, $tenant, $item->id);
         $newQuantity = $currentQuantity + $quantity;
 
         if ((float) $item->stock_quantity < $newQuantity) {
             return back()->withErrors(['quantity' => 'Quantidade indisponível no estoque.']);
         }
 
-        $cart[$item->id] = [
-            'item_id' => $item->id,
-            'name' => $item->name,
-            'quantity' => $newQuantity,
-            'unit_price' => (float) $item->sale_price,
-        ];
-
-        $request->session()->put($this->cartSessionKey($tenant), $cart);
+        $this->putCartItem($request, $tenant, $item, $newQuantity);
 
         return redirect()
             ->route('public.checkout.cart', $tenant->slug)
@@ -85,6 +80,7 @@ class PublicCheckoutController extends Controller
     public function process(Request $request, $slug)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
         abort_unless($tenant->hasFeature('catalog'), 404);
 
         if (! $request->user()?->isCustomer()) {
@@ -166,7 +162,7 @@ class PublicCheckoutController extends Controller
                 ->withErrors(['cart' => $exception->getMessage()]);
         }
 
-        $request->session()->forget($this->cartSessionKey($tenant));
+        $this->clearCart($request, $tenant);
 
         return redirect()
             ->route('public.checkout.order.show', [$tenant->slug, $order])
@@ -176,6 +172,7 @@ class PublicCheckoutController extends Controller
     public function createBudgetOrder(Request $request, $slug, $os_id)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
 
         if (! $request->user()?->isCustomer()) {
             return redirect()->route('public.customer.login', [
@@ -225,9 +222,10 @@ class PublicCheckoutController extends Controller
             ->with('success', 'Pedido de pagamento do orçamento criado em aberto.');
     }
 
-    public function showOrder($slug, CheckoutOrder $order)
+    public function showOrder(Request $request, $slug, CheckoutOrder $order)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
 
         abort_unless($order->tenant_id === $tenant->id, 404);
 
@@ -239,6 +237,7 @@ class PublicCheckoutController extends Controller
     public function cancelOrder(Request $request, $slug, CheckoutOrder $order)
     {
         $tenant = $this->publicTenant($slug);
+        $this->rememberTenantContext($request, $tenant);
 
         abort_unless($order->tenant_id === $tenant->id, 404);
         abort_unless($order->canBeCanceled(), 409);
@@ -263,6 +262,28 @@ class PublicCheckoutController extends Controller
 
     private function cartItems(Request $request, Tenant $tenant)
     {
+        if ($request->user()?->isCustomer()) {
+            $cart = $this->cartForAuthenticatedCustomer($request, $tenant);
+
+            return $cart->items()
+                ->with('item')
+                ->get()
+                ->filter(fn ($cartItem) => $cartItem->item && $cartItem->item->tenant_id === $tenant->id)
+                ->map(function ($cartItem) {
+                    $quantity = (float) $cartItem->quantity;
+                    $unitPrice = (float) $cartItem->unit_price;
+
+                    return [
+                        'item_id' => $cartItem->item_id,
+                        'name' => $cartItem->item->name,
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'total_price' => $quantity * $unitPrice,
+                    ];
+                })
+                ->values();
+        }
+
         return collect($request->session()->get($this->cartSessionKey($tenant), []))
             ->map(function (array $cartItem) {
                 $quantity = (float) $cartItem['quantity'];
@@ -277,9 +298,115 @@ class PublicCheckoutController extends Controller
             ->values();
     }
 
+    private function currentCartQuantity(Request $request, Tenant $tenant, int $itemId): float
+    {
+        if ($request->user()?->isCustomer()) {
+            $cart = $this->cartForAuthenticatedCustomer($request, $tenant);
+            $cartItem = $cart->items()->where('item_id', $itemId)->first();
+
+            return (float) ($cartItem?->quantity ?? 0);
+        }
+
+        $cart = $request->session()->get($this->cartSessionKey($tenant), []);
+
+        return (float) ($cart[$itemId]['quantity'] ?? 0);
+    }
+
+    private function putCartItem(Request $request, Tenant $tenant, Item $item, float $quantity): void
+    {
+        if ($request->user()?->isCustomer()) {
+            $cart = $this->cartForAuthenticatedCustomer($request, $tenant);
+
+            $cart->items()->updateOrCreate(
+                ['item_id' => $item->id],
+                [
+                    'quantity' => $quantity,
+                    'unit_price' => (float) $item->sale_price,
+                ]
+            );
+
+            return;
+        }
+
+        $cart = $request->session()->get($this->cartSessionKey($tenant), []);
+        $cart[$item->id] = [
+            'item_id' => $item->id,
+            'name' => $item->name,
+            'quantity' => $quantity,
+            'unit_price' => (float) $item->sale_price,
+        ];
+
+        $request->session()->put($this->cartSessionKey($tenant), $cart);
+    }
+
+    private function clearCart(Request $request, Tenant $tenant): void
+    {
+        if ($request->user()?->isCustomer()) {
+            $cart = $this->cartForAuthenticatedCustomer($request, $tenant);
+            $cart->items()->delete();
+        }
+
+        $request->session()->forget($this->cartSessionKey($tenant));
+    }
+
+    private function cartForAuthenticatedCustomer(Request $request, Tenant $tenant): CheckoutCart
+    {
+        $cart = CheckoutCart::firstOrCreate([
+            'user_id' => $request->user()->id,
+            'tenant_id' => $tenant->id,
+        ]);
+
+        $this->mergeSessionCartIntoDatabase($request, $tenant, $cart);
+
+        return $cart;
+    }
+
+    private function mergeSessionCartIntoDatabase(Request $request, Tenant $tenant, CheckoutCart $cart): void
+    {
+        $sessionCart = $request->session()->get($this->cartSessionKey($tenant), []);
+
+        if ($sessionCart === []) {
+            return;
+        }
+
+        foreach ($sessionCart as $sessionItem) {
+            $item = Item::forTenant($tenant->id)
+                ->publicCatalog()
+                ->find($sessionItem['item_id'] ?? null);
+
+            if (! $item) {
+                continue;
+            }
+
+            $existing = $cart->items()->where('item_id', $item->id)->first();
+            $quantity = (float) ($existing?->quantity ?? 0) + (float) ($sessionItem['quantity'] ?? 0);
+            $quantity = min($quantity, (float) $item->stock_quantity);
+
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $cart->items()->updateOrCreate(
+                ['item_id' => $item->id],
+                [
+                    'quantity' => $quantity,
+                    'unit_price' => (float) $item->sale_price,
+                ]
+            );
+        }
+
+        $request->session()->forget($this->cartSessionKey($tenant));
+    }
+
     private function cartSessionKey(Tenant $tenant): string
     {
         return 'checkout_cart.'.$tenant->id;
+    }
+
+    private function rememberTenantContext(Request $request, Tenant $tenant): void
+    {
+        $request->session()->put('public_tenant_id', $tenant->id);
+        $request->session()->put('public_tenant_slug', $tenant->slug);
     }
 
     private function splitFor(float $total): array

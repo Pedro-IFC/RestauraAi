@@ -49,7 +49,21 @@ class PublicCustomerAccountController extends Controller
             ->latest()
             ->get();
 
-        return view('public.account.index', compact('tenant', 'customer', 'serviceOrders', 'equipment', 'checkoutOrders', 'addresses'));
+        $allAssistances = Customer::with(['tenant', 'serviceOrders', 'checkoutOrders'])
+            ->where('user_id', $request->user()->id)
+            ->whereHas('tenant', fn ($query) => $query->whereIn('status', ['active', 'trial']))
+            ->orderBy('updated_at', 'desc')
+            ->get();
+
+        return view('public.account.index', compact(
+            'tenant',
+            'customer',
+            'serviceOrders',
+            'equipment',
+            'checkoutOrders',
+            'addresses',
+            'allAssistances'
+        ));
     }
 
     public function updateProfile(Request $request, string $slug)
