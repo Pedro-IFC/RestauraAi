@@ -144,6 +144,59 @@ class KanbanManagementTest extends TestCase
         $this->assertNotNull($serviceOrder->hardware_received_at);
     }
 
+    public function test_tenant_can_create_service_order_with_new_customer_from_panel(): void
+    {
+        [$tenant, $user] = $this->tenantAndUser();
+        $triage = KanbanColumn::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Triagem',
+            'order_index' => 1,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('ordens-servico.store'), [
+                'customer_name' => 'Cliente Balcao',
+                'customer_cpf' => '11122233344',
+                'customer_phone' => '47988887777',
+                'customer_email' => 'balcao@example.com',
+                'kanban_column_id' => $triage->id,
+                'device_model' => 'Samsung A54',
+                'defect_symptoms' => 'Conector de carga falhando',
+            ])
+            ->assertRedirect();
+
+        $customer = Customer::where('tenant_id', $tenant->id)
+            ->where('cpf', '11122233344')
+            ->firstOrFail();
+
+        $this->assertSame('Cliente Balcao', $customer->name);
+        $this->assertDatabaseHas('service_orders', [
+            'tenant_id' => $tenant->id,
+            'customer_id' => $customer->id,
+            'kanban_column_id' => $triage->id,
+            'device_model' => 'Samsung A54',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_tenant_create_form_initializes_default_columns(): void
+    {
+        [$tenant, $user] = $this->tenantAndUser();
+
+        $this->actingAs($user)
+            ->get(route('ordens-servico.create'))
+            ->assertOk()
+            ->assertSee('Novo chamado')
+            ->assertSee('Triagem')
+            ->assertSee('Nome do novo cliente');
+
+        $this->assertDatabaseHas('kanban_columns', [
+            'tenant_id' => $tenant->id,
+            'name' => 'Triagem',
+            'order_index' => 1,
+        ]);
+    }
+
     private function tenantAndUser(): array
     {
         $plan = Plan::create([

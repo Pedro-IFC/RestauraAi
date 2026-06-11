@@ -5,22 +5,52 @@
 @section('content')
     <div class="mb-6">
         <a href="{{ route('ordens-servico.index') }}" class="text-sm font-semibold text-blue-600 hover:text-blue-700">Voltar para OS</a>
-        <h1 class="mt-2 text-2xl font-bold text-gray-900">Nova ordem de serviço</h1>
-        <p class="text-sm text-gray-600">Cadastre o atendimento com os dados técnicos e o planejamento inicial.</p>
+        <h1 class="mt-2 text-2xl font-bold text-gray-900">Novo chamado</h1>
+        <p class="text-sm text-gray-600">Cadastre o cliente, o equipamento e o planejamento inicial da OS.</p>
     </div>
 
     <form method="POST" action="{{ route('ordens-servico.store') }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         @csrf
 
         <div class="grid gap-4 md:grid-cols-2">
-            <div>
-                <label for="customer_id" class="block text-sm font-medium text-gray-700">Cliente</label>
-                <select id="customer_id" name="customer_id" required class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <option value="">Selecione</option>
-                    @foreach ($customers as $customer)
-                        <option value="{{ $customer->id }}" @selected((string) old('customer_id') === (string) $customer->id)>{{ $customer->name }}</option>
-                    @endforeach
-                </select>
+            <div class="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <h2 class="text-sm font-semibold text-gray-900">Cliente</h2>
+                <p class="mt-1 text-sm text-gray-600">Selecione um cliente já cadastrado ou preencha os dados básicos para criar um novo.</p>
+                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                    <div class="md:col-span-2">
+                        <label for="customer_id" class="block text-sm font-medium text-gray-700">Cliente existente</label>
+                        <select id="customer_id" name="customer_id" class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="">Criar novo cliente</option>
+                            @foreach ($customers as $customer)
+                                <option value="{{ $customer->id }}" @selected((string) old('customer_id') === (string) $customer->id)>{{ $customer->name }}{{ $customer->cpf ? ' - '.$customer->cpf : '' }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="customer_name" class="block text-sm font-medium text-gray-700">Nome do novo cliente</label>
+                        <input id="customer_name" name="customer_name" value="{{ old('customer_name') }}"
+                            class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label for="customer_cpf" class="block text-sm font-medium text-gray-700">CPF</label>
+                        <input id="customer_cpf" name="customer_cpf" value="{{ old('customer_cpf') }}"
+                            class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label for="customer_phone" class="block text-sm font-medium text-gray-700">Telefone</label>
+                        <input id="customer_phone" name="customer_phone" value="{{ old('customer_phone') }}"
+                            class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label for="customer_email" class="block text-sm font-medium text-gray-700">E-mail</label>
+                        <input id="customer_email" name="customer_email" type="email" value="{{ old('customer_email') }}"
+                            class="mt-1 w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                </div>
             </div>
 
             <div>
@@ -88,7 +118,7 @@
 
         <div class="mt-6 flex justify-end">
             <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                Criar OS
+                Criar chamado
             </button>
         </div>
     </form>

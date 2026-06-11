@@ -127,7 +127,8 @@
             $tenantMenuItems[] = ['label' => 'Início', 'route' => 'tenant.dashboard', 'active' => request()->routeIs('tenant.dashboard')];
 
             if ($tenant->hasFeature('kanban')) {
-                $tenantMenuItems[] = ['label' => 'Kanban', 'route' => 'tenant.kanban.index', 'active' => request()->routeIs('tenant.kanban.*') || request()->routeIs('ordens-servico.*')];
+                $tenantMenuItems[] = ['label' => 'Chamados', 'route' => 'ordens-servico.index', 'active' => request()->routeIs('ordens-servico.*')];
+                $tenantMenuItems[] = ['label' => 'Kanban', 'route' => 'tenant.kanban.index', 'active' => request()->routeIs('tenant.kanban.*')];
             }
 
             if ($tenant->hasFeature('inventory')) {

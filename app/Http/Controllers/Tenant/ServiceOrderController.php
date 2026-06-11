@@ -15,6 +15,15 @@ use Illuminate\Validation\Rule;
 
 class ServiceOrderController extends Controller
 {
+    private const DEFAULT_COLUMNS = [
+        'Triagem',
+        'Orçamento',
+        'Aguardando Peça',
+        'Na Bancada',
+        'Testes',
+        'Pronto',
+    ];
+
     /**
      * Display a listing of the service orders.
      * (Lista as OSs da assistência atual. O escopo do Tenant pode ser injetado via Global Scope)
@@ -36,8 +45,12 @@ class ServiceOrderController extends Controller
      */
     public function create()
     {
-        $customers = Customer::where('tenant_id', Auth::user()->tenant_id)->orderBy('name')->get();
-        $kanbanColumns = KanbanColumn::where('tenant_id', Auth::user()->tenant_id)->orderBy('order_index')->get();
+        $tenantId = Auth::user()->tenant_id;
+
+        $this->ensureDefaultColumns($tenantId);
+
+        $customers = Customer::where('tenant_id', $tenantId)->orderBy('name')->get();
+        $kanbanColumns = KanbanColumn::where('tenant_id', $tenantId)->orderBy('order_index')->get();
 
         return view('tenant.service_orders.create', compact('customers', 'kanbanColumns'));
     }
@@ -48,22 +61,32 @@ class ServiceOrderController extends Controller
      */
     public function store(Request $request)
     {
-        if (Auth::user()->tenant->hasReachedMonthlyServiceOrderLimit()) {
+        $tenant = Auth::user()->tenant;
+        $tenantId = $tenant->id;
+
+        if ($tenant->hasReachedMonthlyServiceOrderLimit()) {
             return back()
                 ->withInput()
                 ->withErrors(['plan' => 'Limite mensal de chamados atingido para o plano atual.']);
         }
 
+        $this->ensureDefaultColumns($tenantId);
+
         $validated = $request->validate([
             'customer_id' => [
-                'required',
-                Rule::exists('customers', 'id')->where('tenant_id', Auth::user()->tenant_id),
+                'nullable',
+                'required_without:customer_name',
+                Rule::exists('customers', 'id')->where('tenant_id', $tenantId),
             ],
+            'customer_name' => 'nullable|required_without:customer_id|string|max:255',
+            'customer_cpf' => 'nullable|string|max:20',
+            'customer_phone' => 'nullable|string|max:30',
+            'customer_email' => 'nullable|email|max:255',
             'device_model' => 'required|string|max:255',
             'defect_symptoms' => 'required|string',
             'kanban_column_id' => [
                 'required',
-                Rule::exists('kanban_columns', 'id')->where('tenant_id', Auth::user()->tenant_id),
+                Rule::exists('kanban_columns', 'id')->where('tenant_id', $tenantId),
             ],
             'planned_start_at' => 'nullable|date',
             'deadline_at' => 'nullable|date',
@@ -72,23 +95,35 @@ class ServiceOrderController extends Controller
             'schedule_notes' => 'nullable|string|max:1000',
             'next_kanban_column_id' => [
                 'nullable',
-                Rule::exists('kanban_columns', 'id')->where('tenant_id', Auth::user()->tenant_id),
+                Rule::exists('kanban_columns', 'id')->where('tenant_id', $tenantId),
             ],
         ]);
 
         $nextKanbanColumnId = $validated['next_kanban_column_id'] ?? null;
         unset($validated['next_kanban_column_id']);
 
-        // O tenant_id pode ser definido automaticamente no observer ou aqui via auth()
-        $serviceOrder = ServiceOrder::create(array_merge($validated, [
-            'tenant_id' => Auth::user()->tenant_id,
-            'status' => 'pending',
-            'kanban_position' => (ServiceOrder::where('tenant_id', Auth::user()->tenant_id)
-                ->where('kanban_column_id', $validated['kanban_column_id'])
-                ->max('kanban_position') ?? 0) + 1,
-            'total_cost' => 0.00,
-            'total_price' => 0.00,
-        ]));
+        $serviceOrder = DB::transaction(function () use ($tenantId, $validated) {
+            $customer = $this->resolveCustomer($tenantId, $validated);
+
+            return ServiceOrder::create([
+                'tenant_id' => $tenantId,
+                'customer_id' => $customer->id,
+                'kanban_column_id' => $validated['kanban_column_id'],
+                'device_model' => $validated['device_model'],
+                'defect_symptoms' => $validated['defect_symptoms'],
+                'planned_start_at' => $validated['planned_start_at'] ?? null,
+                'deadline_at' => $validated['deadline_at'] ?? null,
+                'hardware_received_at' => $validated['hardware_received_at'] ?? null,
+                'hardware_received_notes' => $validated['hardware_received_notes'] ?? null,
+                'schedule_notes' => $validated['schedule_notes'] ?? null,
+                'status' => 'pending',
+                'kanban_position' => (ServiceOrder::where('tenant_id', $tenantId)
+                    ->where('kanban_column_id', $validated['kanban_column_id'])
+                    ->max('kanban_position') ?? 0) + 1,
+                'total_cost' => 0.00,
+                'total_price' => 0.00,
+            ]);
+        });
 
         if ($serviceOrder->hardware_received_at) {
             app(ServiceOrderWorkflow::class)->advanceAfterHardwareReceipt($serviceOrder, $nextKanbanColumnId);
@@ -97,6 +132,52 @@ class ServiceOrderController extends Controller
         return redirect()
             ->route('ordens-servico.show', $serviceOrder->id)
             ->with('success', 'Ordem de Serviço criada com sucesso.');
+    }
+
+    private function resolveCustomer(int $tenantId, array $validated): Customer
+    {
+        if (! empty($validated['customer_id'])) {
+            return Customer::where('tenant_id', $tenantId)->findOrFail($validated['customer_id']);
+        }
+
+        $customerData = [
+            'name' => $validated['customer_name'],
+            'cpf' => $validated['customer_cpf'] ?? null,
+            'phone' => $validated['customer_phone'] ?? null,
+            'email' => $validated['customer_email'] ?? null,
+        ];
+
+        if (! empty($customerData['cpf'])) {
+            $customer = Customer::firstOrNew([
+                'tenant_id' => $tenantId,
+                'cpf' => $customerData['cpf'],
+            ]);
+
+            $customer->fill($customerData);
+            $customer->tenant_id = $tenantId;
+            $customer->save();
+
+            return $customer;
+        }
+
+        return Customer::create(array_merge($customerData, [
+            'tenant_id' => $tenantId,
+        ]));
+    }
+
+    private function ensureDefaultColumns(int $tenantId): void
+    {
+        if (KanbanColumn::where('tenant_id', $tenantId)->exists()) {
+            return;
+        }
+
+        foreach (self::DEFAULT_COLUMNS as $index => $name) {
+            KanbanColumn::create([
+                'tenant_id' => $tenantId,
+                'name' => $name,
+                'order_index' => $index + 1,
+            ]);
+        }
     }
 
     /**

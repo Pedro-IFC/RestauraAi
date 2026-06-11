@@ -9,14 +9,20 @@
             <p class="text-sm text-gray-600">Acompanhe os chamados do link público e mova cada OS pelo fluxo da bancada.</p>
         </div>
 
-        <form method="POST" action="{{ route('tenant.kanban.columns.store') }}" class="flex w-full gap-2 lg:w-auto">
-            @csrf
-            <input name="name" type="text" placeholder="Nova coluna" required
-                class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 lg:w-56">
-            <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
-                Adicionar
-            </button>
-        </form>
+        <div class="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+            <a href="{{ route('ordens-servico.create') }}" class="inline-flex justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                Novo chamado
+            </a>
+
+            <form method="POST" action="{{ route('tenant.kanban.columns.store') }}" class="flex w-full gap-2 sm:w-auto">
+                @csrf
+                <input name="name" type="text" placeholder="Nova coluna" required
+                    class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 lg:w-56">
+                <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                    Adicionar
+                </button>
+            </form>
+        </div>
     </div>
 
     <div class="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
